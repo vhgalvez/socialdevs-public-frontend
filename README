@@ -328,3 +328,153 @@ Aplica el despliegue a K3s/K3d
 
 
 
+____________
+🧠 VISIÓN GENERAL
+Objetivo
+Montar un flujo completo de integración y despliegue continuo (CI/CD) usando:
+
+GitHub → código fuente
+
+Docker Hub → imágenes contenedorizadas
+
+Jenkins → CI (construcción automática de imágenes)
+
+ArgoCD → CD (despliegue automático GitOps)
+
+K3d (local) y luego K3s (bare-metal/lab real) → clúster Kubernetes
+
+🧩 MICROSERVICIOS Y REPOSITORIOS
+Componente	Repositorio GitHub	Imagen Docker Hub
+Frontend (Vue.js + Vite + Nginx)	socialdevs-public-frontend	vhgalvez/socialdevs-public-frontend
+Backend (FastAPI + PostgreSQL)	socialdevs-public-backend	vhgalvez/socialdevs-public-backend
+GitOps (Kustomize + ArgoCD)	socialdevs-gitops	No aplica (usa archivos kustomization.yaml)
+Infraestructura CI/CD + Jenkins	socialdevs-infra-ansible (FlatcarMicroCloud)	No aplica (usa Ansible + Helm)
+
+📦 PASO A PASO TEÓRICO
+1. Desarrolla el código fuente
+Cada microservicio tiene su propio repositorio y lógica.
+Por ejemplo:
+
+socialdevs-public-frontend: Vue 3 + Vite + Nginx
+
+socialdevs-public-backend: FastAPI + Uvicorn + PostgreSQL
+
+Tu Dockerfile debe permitir construir cada microservicio en un contenedor de producción.
+
+2. Sube el código a GitHub
+Para cada servicio:
+
+bash
+Copiar
+Editar
+git init
+git remote add origin https://github.com/tu_usuario/repo.git
+git add .
+git commit -m "initial commit"
+git push -u origin main
+3. Construye y sube la imagen Docker manualmente (opcional)
+bash
+Copiar
+Editar
+docker build -t vhgalvez/socialdevs-public-frontend:latest .
+docker push vhgalvez/socialdevs-public-frontend:latest
+Esto es lo que luego Jenkins automatizará.
+
+4. Configura Jenkins
+4.1 Instálalo (ya lo tienes automatizado con Ansible en tu socialdevs-infra-ansible)
+4.2 Accede al dashboard y crea un nuevo Pipeline
+Conecta con GitHub (token)
+
+Añade un Jenkinsfile en tu repo para definir el pipeline
+
+4.3 Jenkinsfile típico (CI)
+groovy
+Copiar
+Editar
+pipeline {
+  agent any
+  stages {
+    stage('Checkout') {
+      steps {
+        git 'https://github.com/vhgalvez/socialdevs-public-frontend.git'
+      }
+    }
+    stage('Build Docker Image') {
+      steps {
+        sh 'docker build -t vhgalvez/socialdevs-public-frontend:latest .'
+      }
+    }
+    stage('Push to DockerHub') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
+          sh 'docker push vhgalvez/socialdevs-public-frontend:latest'
+        }
+      }
+    }
+  }
+}
+5. Configura ArgoCD
+5.1 Instala ArgoCD (con Ansible ya lo puedes hacer)
+5.2 Crea un repo socialdevs-gitops en GitHub con estructura tipo Kustomize:
+bash
+Copiar
+Editar
+socialdevs-gitops/
+├── base/
+│   └── frontend/
+│       ├── deployment.yaml
+│       ├── service.yaml
+│       └── kustomization.yaml
+└── overlays/
+    └── local/
+        └── kustomization.yaml
+deployment.yaml usa la imagen vhgalvez/socialdevs-public-frontend:latest.
+
+5.3 Conecta ArgoCD con GitHub
+Desde el dashboard o por CLI:
+
+bash
+Copiar
+Editar
+argocd repo add https://github.com/vhgalvez/socialdevs-gitops --username <user> --password <pass>
+6. Despliegue GitOps con ArgoCD
+Crea una aplicación en ArgoCD:
+
+bash
+Copiar
+Editar
+argocd app create socialdevs-frontend \
+  --repo https://github.com/vhgalvez/socialdevs-gitops \
+  --path overlays/local \
+  --dest-server https://kubernetes.default.svc \
+  --dest-namespace default
+Aplica:
+
+bash
+Copiar
+Editar
+argocd app sync socialdevs-frontend
+Y ArgoCD desplegará el microservicio en Kubernetes.
+
+7. Pipeline completo: de código a producción
+css
+Copiar
+Editar
+[ GitHub Repo ]
+     ↓ Push
+[ Jenkins ] → build image → push DockerHub
+     ↓
+[ ArgoCD ] ← detecta nuevo commit en gitops repo
+     ↓
+[ K3d/K3s ] ← despliegue automático
+✅ Resultado esperado
+Tu frontend estará corriendo en Kubernetes (puerto o dominio vía Traefik).
+
+ArgoCD mostrará el estado (Synced, Healthy).
+
+Jenkins habrá hecho CI + Push Docker.
+
+GitHub habrá almacenado todo el código.
+
+DockerHub tendrá la imagen versionada.
