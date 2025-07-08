@@ -632,3 +632,20 @@ socialdevs-public-frontend/
     ├── deployment.yaml
     ├── service.yaml
     └── ingressroute.yaml
+
+
+
+# Construcción de la imagen
+docker build -t vhgalvez/socialdevs-public-frontend:latest .
+
+# Crear tag versionado
+docker tag vhgalvez/socialdevs-public-frontend:latest vhgalvez/socialdevs-public-frontend:v1.0.0
+
+# Subir ambas a Docker Hub
+docker push vhgalvez/socialdevs-public-frontend:latest
+docker push vhgalvez/socialdevs-public-frontend:v1.0.0
+
+
+docker tag vhgalvez/socialdevs-public-frontend:latest vhgalvez/socialdevs-public-frontend:v1.0.0
+
+docker push vhgalvez/socialdevs-public-frontend:v1.0.0
