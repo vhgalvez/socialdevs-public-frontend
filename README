@@ -649,3 +649,14 @@ docker push vhgalvez/socialdevs-public-frontend:v1.0.0
 docker tag vhgalvez/socialdevs-public-frontend:latest vhgalvez/socialdevs-public-frontend:v1.0.0
 
 docker push vhgalvez/socialdevs-public-frontend:v1.0.0
+
+
+✅ Requisitos
+Kubernetes (K3s, K3d o cualquier cluster compatible)
+
+Traefik como Ingress Controller
+
+ArgoCD configurado y funcionando
+
+Docker Hub accesible
+
