@@ -660,3 +660,35 @@ ArgoCD configurado y funcionando
 
 Docker Hub accesible
 
+
+
+
+kubectl create namespace argocd
+
+helm repo add argo https://argoproj.github.io/argo-helm
+helm repo update
+
+helm install argocd argo/argo-cd \
+  --namespace argocd \
+  --set server.service.type=NodePort \
+  --set server.service.nodePortHttp=32080 \
+  --set server.service.nodePortHttps=32443
+
+
+kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath="{.data.password}" | base64 -d; echo
+
+🌐 3. Acceder al dashboard ArgoCD
+Abre en tu navegador:
+
+arduino
+Copiar
+Editar
+https://localhost:32443
+Usuario: admin
+Contraseña: (la que obtuviste arriba)
+
+⚠️ Si usas k3d, puedes exponer el puerto con k3d cluster create con flags --port o redirigir desde Traefik.
+
+
+kubectl port-forward svc/argocd-server -n argocd 8888:443
