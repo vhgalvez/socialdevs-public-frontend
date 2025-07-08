@@ -635,6 +635,8 @@ socialdevs-public-frontend/
 
 
 
+
+
 # Construcción de la imagen
 docker build -t vhgalvez/socialdevs-public-frontend:latest .
 
@@ -684,11 +686,71 @@ Abre en tu navegador:
 arduino
 Copiar
 Editar
-https://localhost:32443
+https://localhost:8080
 Usuario: admin
 Contraseña: (la que obtuviste arriba)
 
 ⚠️ Si usas k3d, puedes exponer el puerto con k3d cluster create con flags --port o redirigir desde Traefik.
 
+kubectl get svc argocd-server -n argocd
 
-kubectl port-forward svc/argocd-server -n argocd 8888:443
+kubectl get pods -n argocd
+
+
+kubectl get nodes -o wide
+
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
+
+
+
+# Paso 1: Abrir túnel
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+
+# Paso 2: En otra terminal, obtener contraseña
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
+
+# Luego accede en el navegador a:
+https://localhost:8080
+
+
+
+_____📝 Documentación: Jenkins con Helm
+
+
+🛠️ Comandos exitosos para desplegar Jenkins con Helm
+bash
+Copiar
+Editar
+# 1. Instalar Jenkins con configuración personalizada
+helm install jenkins jenkins/jenkins -n jenkins \
+  --set controller.admin.username=admin \
+  --set controller.admin.password=admin \
+  --set controller.serviceType=NodePort \
+  --set controller.nodePort=32000 \
+  --set controller.installPlugins[0]=kubernetes \
+  --set controller.installPlugins[1]=workflow-aggregator \
+  --set controller.installPlugins[2]=docker-workflow \
+  --set controller.installPlugins[3]=git \
+  --set controller.installPlugins[4]=blueocean
+bash
+Copiar
+Editar
+# 2. Obtener la contraseña del usuario admin
+kubectl exec --namespace jenkins -it svc/jenkins -c jenkins -- cat /run/secrets/additional/chart-admin-password
+bash
+Copiar
+Editar
+# 3. Obtener IP y puerto para acceder a Jenkins
+export NODE_PORT=$(kubectl get --namespace jenkins -o jsonpath="{.spec.ports[0].nodePort}" services jenkins)
+export NODE_IP=$(kubectl get nodes -o jsonpath="{.items[0].status.addresses[0].address}")
+echo "🔗 Jenkins UI: http://$NODE_IP:$NODE_PORT"
+
+
+kubectl port-forward svc/jenkins -n jenkins 8090:8080
+
+http://localhost:8090
+
+
+
+
+
