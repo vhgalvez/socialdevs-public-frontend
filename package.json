@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "vue": "^3.4.21",
-    "vue-router": "^4.3.0" // ¡Asegúrate de que esta línea esté presente!
+    "vue-router": "^4.3.0"
   },
   "devDependencies": {
     "vite": "^5.2.0",
