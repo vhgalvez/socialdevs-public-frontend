@@ -1,0 +1,327 @@
+ Resumen Técnico Completo – Proyecto: MicroTwitter con DevOps CI/CD + GitOps
+🎯 Objetivo General
+Desarrollar y desplegar una aplicación tipo MicroTwitter (foro de publicaciones tipo tweet) como un laboratorio DevOps completo que demuestre:
+
+Microservicios en Kubernetes (FastAPI + Vue.js)
+
+GitOps con ArgoCD
+
+CI/CD automatizado con Jenkins
+
+Observabilidad con Grafana, Loki, cAdvisor y Alloy
+
+Almacenamiento persistente con PVC sobre NFS
+
+Comunicación entre microservicios
+
+Arquitectura realista y escalable para producción
+
+🧱 Arquitectura General
+plaintext
+Copiar
+Editar
+                         +------------------+
+                         |    Developer     |
+                         +--------+---------+
+                                  |
+                             (1) Git Push
+                                  |
+                      +-----------v----------+
+                      |      Jenkins         |
+                      +-----------+----------+
+                                  |
+        +-------------------------+--------------------------+
+        |                       CI/CD                        |
+        |  - build Docker images                              |
+        |  - push a Docker Hub                                |
+        |  - update GitOps repo (deployment.yaml)             |
+        +-------------------------+--------------------------+
+                                  |
+                           +------v-------+
+                           |   ArgoCD     |  <─── Auto-sync GitOps repo
+                           +------+-------+
+                                  |
+                             Apply YAMLs
+                                  |
+     +----------------------------v---------------------------+
+     |                      Kubernetes K3s                    |
+     |  +------------------+ +----------------+ +------------+|
+     |  | users-service    | | posts-service  | | frontend   ||
+     |  +--------+---------+ +--------+-------+ +------------+|
+     |           |                    |                        |
+     |           +----- Internal HTTP/REST via svc ---------->|
+     +--------------------------------------------------------+
+                                  |
+                             Ingress (Traefik)
+                                  |
+                      Public domain (frontend.socialdevs.site)
+
+📦 Microservicios
+Servicio	Descripción	Tecnología
+frontend	Interfaz web tipo Twitter (SPA)	Vue.js + Nginx
+users-service	API para usuarios (crear, listar)	FastAPI
+posts-service	API para publicaciones (crear, listar)	FastAPI
+postgresql	Base de datos persistente	PostgreSQL
+
+📁 Estructura de Repositorios
+1. socialdevs-public-frontend/ (código fuente)
+plaintext
+Copiar
+Editar
+
+socialdevs-public-frontend/
+├── Dockerfile
+├── Jenkinsfile
+├── package.json
+├── vite.config.js
+├── public/
+│   └── index.html
+└── src/
+    ├── main.js
+    ├── App.vue
+    ├── router/
+    │   └── index.js
+    ├── components/
+    │   ├── Header.vue
+    │   └── TweetCard.vue
+    ├── pages/
+    │   ├── Home.vue
+    │   ├── Login.vue
+    │   └── Register.vue
+    └── utils/
+        └── api.js
+
+
+
+
+Incluye Vue.js SPA, empaquetado por Vite, desplegado por Nginx en contenedor.
+
+1. socialdevs-gitops/ (manifiestos GitOps)
+plaintext
+Copiar
+Editar
+socialdevs-gitops/
+└── apps/
+    └── socialdevs-frontend/
+        ├── base/
+        │   ├── deployment.yaml
+        │   ├── service.yaml
+        │   ├── ingress.yaml
+        │   └── kustomization.yaml
+        └── overlays/
+            ├── dev/
+            ├── staging/
+            └── prod/
+ArgoCD observa este repositorio para desplegar automáticamente en el clúster K3s.
+
+🔁 CI/CD + GitOps Flujo DevOps
+plaintext
+Copiar
+Editar
+1. Dev hace Git Push al frontend/backend
+2. Jenkins se activa (webhook o polling)
+3. Jenkins:
+    - Clona el código fuente
+    - Construye la imagen Docker
+    - Sube la imagen a Docker Hub
+    - Clona el repo GitOps
+    - Modifica el `deployment.yaml` con el nuevo tag de imagen
+    - Commit + push al GitOps repo
+
+4. ArgoCD:
+    - Detecta cambio en GitOps repo
+    - Aplica los manifests automáticamente en K3s
+5. Traefik expone el servicio al público (con o sin HTTPS)
+📊 Observabilidad
+Grafana: Dashboard unificado
+
+Prometheus (opcional): Scraping de métricas
+
+Loki: Logs de contenedores en tiempo real
+
+Alloy: Reemplazo moderno para promtail/node exporter
+
+cAdvisor: Métricas por pod
+
+🗂 Base de Datos + Almacenamiento
+PostgreSQL desplegado en una máquina virtual dedicada (externa al clúster)
+
+PVC para base de datos montado sobre NFS
+
+Comunicación entre los microservicios y la DB a través de red privada
+
+🔒 Seguridad y Networking
+Traefik como IngressController (HTTP y HTTPS)
+
+IP pública o DDNS configurada en router
+
+HAProxy + Keepalived para alta disponibilidad de VIP
+
+Acceso remoto cifrado por VPN (WireGuard)
+
+
+
+k3d cluster create socialdevs-local \
+  --agents 2 \
+  --api-port 6550 \
+  -p "80:80@loadbalancer" \
+  -p "443:443@loadbalancer"
+
+
+| Opción                      | Significado                            |
+| --------------------------- | -------------------------------------- |
+| `socialdevs-local`          | Nombre del clúster                     |
+| `--agents 2`                | 2 nodos worker                         |
+| `--api-port 6550`           | Expone el API server en el puerto 6550 |
+| `-p "80:80@loadbalancer"`   | Expone HTTP localmente                 |
+| `-p "443:443@loadbalancer"` | Expone HTTPS localmente                |
+
+
+🔧 Configura kubectl para usar el clúster
+Después de crear el clúster, verifica que funciona:
+
+bash
+Copiar
+Editar
+kubectl get nodes
+Deberías ver algo como:
+
+bash
+Copiar
+Editar
+NAME                    STATUS   ROLES                  AGE   VERSION
+k3d-socialdevs-local-server-0   Ready    control-plane,master   1m    v1.29.x
+k3d-socialdevs-local-agent-0    Ready    <none>                 1m    v1.29.x
+k3d-socialdevs-local-agent-1    Ready    <none>                 1m    v1.29.x
+
+
+
+| Nombre del Microservicio   | Descripción                                                               | Tecnología     | Expone API | Conexiones                   |
+| -------------------------- | ------------------------------------------------------------------------- | -------------- | ---------- | ---------------------------- |
+| **frontend**               | Aplicación web tipo Twitter (SPA)                                         | Vue.js + Nginx | No         | Consume `users` y `posts`    |
+| **users-service**          | Gestión de usuarios (registro, login, lista)                              | FastAPI        | Sí         | PostgreSQL, frontend         |
+| **posts-service**          | Gestión de publicaciones tipo tweet (crear, listar, eliminar)             | FastAPI        | Sí         | PostgreSQL, frontend         |
+| **postgresql** *(externo)* | Base de datos relacional compartida para usuarios y posts                 | PostgreSQL     | No         | users-service, posts-service |
+| **redpanda (opcional)**    | Event streaming para actividad de usuarios o futuros módulos de analítica | Redpanda       | Sí         | posts-service, futuro ML     |
+| **loki**                   | Sistema de logs centralizado                                              | Loki           | Sí         | Todos los microservicios     |
+| **grafana**                | Dashboard para métricas y logs (observabilidad)                           | Grafana        | Sí         | Loki, Alloy, Prometheus      |
+| **cadvisor**               | Recolector de métricas de contenedores                                    | cAdvisor       | Sí         | Prometheus/Grafana           |
+| **alloy**                  | Recolector unificado de logs y métricas (reemplazo moderno de promtail)   | Alloy          | Sí         | Grafana Cloud / Loki         |
+
+
+
+
+k3d cluster delete socialdevs-local
+k3d cluster create socialdevs-local \
+  --agents 2 \
+  --api-port 6550 \
+  -p "80:80@loadbalancer" \
+  -p "443:443@loadbalancer"
+
+
+
+
+kubectl get ns
+ k3d cluster list
+
+ __
+ 🔁 Flujo CI/CD + GitOps Paso a Paso
+🧱 1. Repositorios GitHub necesarios (mínimo 3)
+Repositorio	Contenido
+socialdevs-public-frontend	Código fuente del frontend (Vue.js + Docker)
+socialdevs-public-backend	Código fuente del backend (FastAPI + Docker)
+socialdevs-gitops	Manifiestos Kubernetes para ArgoCD
+
+Opcional: Puedes tener un 4º repositorio: socialdevs-infra-ansible para la infraestructura (Traefik, Jenkins, etc.)
+
+🐳 2. Repositorios en Docker Hub
+Docker Hub Repo	Imagen
+tu_usuario/frontend	Vue.js compilado con Nginx
+tu_usuario/users-service	API de usuarios (FastAPI)
+tu_usuario/posts-service	API de publicaciones (FastAPI)
+
+🔧 3. Jenkins – Fase de Integración Continua (CI)
+Cada repositorio *-backend y *-frontend debe tener su propio Jenkinsfile con pasos como:
+
+groovy
+Copiar
+Editar
+pipeline {
+  agent any
+  stages {
+    stage('Clonar') {
+      steps {
+        git 'https://github.com/tu_usuario/socialdevs-public-frontend.git'
+      }
+    }
+    stage('Build Docker') {
+      steps {
+        sh 'docker build -t tu_usuario/frontend:latest .'
+      }
+    }
+    stage('Push Docker') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+          sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
+          sh 'docker push tu_usuario/frontend:latest'
+        }
+      }
+    }
+    stage('Actualizar GitOps') {
+      steps {
+        git credentialsId: 'git-creds', url: 'https://github.com/tu_usuario/socialdevs-gitops.git'
+        sh '''
+          cd apps/socialdevs-frontend/overlays/dev
+          sed -i "s|image: .*$|image: tu_usuario/frontend:latest|" deployment.yaml
+          git config user.email "ci@jenkins.com"
+          git config user.name "Jenkins"
+          git commit -am "CI: update frontend image"
+          git push
+        '''
+      }
+    }
+  }
+}
+🚀 4. ArgoCD – Fase de Entrega Continua (CD)
+ArgoCD monitorea el repositorio socialdevs-gitops
+
+Detecta cambios automáticamente en deployment.yaml
+
+Despliega la nueva versión en Kubernetes (k3d o k3s)
+
+💡 Auto-sync habilitado: cuando ArgoCD ve que el manifiesto cambió, aplica el nuevo image: automáticamente sin intervención.
+
+🌐 5. Kubernetes (K3d o K3s)
+Entorno	Clúster	Observación
+Desarrollo local	k3d-socialdevs-local	Ligero, sin cambios de infra
+Producción real	k3s en VPS o bare-metal	Escalable, alta disponibilidad
+
+📈 6. Observabilidad
+Herramienta	Función
+Grafana	Dashboards y métricas
+Loki	Logs centralizados
+Alloy	Recolector moderno de logs
+cAdvisor	Métricas de contenedores (CPU, RAM)
+
+🧠 Mapa mental paso a paso
+🔄 Dev hace push a GitHub
+
+⚙️ Jenkins:
+
+Clona repo fuente
+
+Construye y sube imagen Docker
+
+Actualiza manifiestos GitOps (nuevo image:)
+
+Push a socialdevs-gitops
+
+🤖 ArgoCD:
+
+Detecta nuevo commit
+
+Aplica el despliegue a K3s/K3d
+
+✅ Microservicio actualizado en producción
+
+📊 Observabilidad en Grafana/Loki/cAdvisor
