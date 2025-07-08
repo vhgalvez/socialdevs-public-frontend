@@ -609,3 +609,26 @@ Editar
 docker run -it --rm -p 8080:80 vhgalvez/socialdevs-frontend:latest
 Ir a: http://localhost:8080
 
+
+
+
+
+socialdevs-public-frontend/
+├── Dockerfile
+├── Jenkinsfile
+├── LICENSE
+├── README
+├── index.html
+├── nginx.conf
+├── package.json
+├── vite.config.js
+├── src/
+│   ├── App.vue
+│   ├── components/
+│   ├── main.js
+│   ├── pages/
+│   └── router/
+└── k8s/
+    ├── deployment.yaml
+    ├── service.yaml
+    └── ingressroute.yaml
