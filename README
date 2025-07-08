@@ -478,3 +478,134 @@ Jenkins habrá hecho CI + Push Docker.
 GitHub habrá almacenado todo el código.
 
 DockerHub tendrá la imagen versionada.
+
+___
+📝 DOCUMENTACIÓN: socialdevs-public-frontend
+🧱 1. Estructura del Proyecto
+pgsql
+Copiar
+Editar
+socialdevs-public-frontend/
+├── Dockerfile
+├── Jenkinsfile
+├── LICENSE
+├── README
+├── index.html
+├── nginx.conf
+├── package.json
+├── vite.config.js
+└── src/
+    ├── App.vue
+    ├── main.js
+    ├── components/
+    ├── pages/
+    └── router/
+⚙️ 2. package.json con vue-router
+json
+Copiar
+Editar
+{
+  "name": "socialdevs-public-frontend",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.4.21",
+    "vue-router": "^4.3.0"
+  },
+  "devDependencies": {
+    "vite": "^5.2.0",
+    "@vitejs/plugin-vue": "^5.2.4"
+  }
+}
+🐳 3. Dockerfile multi-stage para producción
+Dockerfile
+Copiar
+Editar
+# Etapa de construcción
+FROM node:18-alpine AS build-stage
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+# Etapa de producción
+FROM nginx:stable-alpine AS production-stage
+COPY --from=build-stage /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+🌐 4. nginx.conf para servir SPA correctamente
+nginx
+Copiar
+Editar
+server {
+  listen 80;
+  server_name localhost;
+
+  root /usr/share/nginx/html;
+  index index.html;
+
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+}
+🧪 5. Build local con Docker
+bash
+Copiar
+Editar
+docker build -t vhgalvez/socialdevs-frontend:latest .
+🔐 6. Login en Docker Hub
+bash
+Copiar
+Editar
+docker login
+🚀 7. Push al repositorio Docker Hub
+bash
+Copiar
+Editar
+docker push vhgalvez/socialdevs-frontend:latest
+☸️ 8. (Opcional) Despliegue en Kubernetes (YAML básico)
+yaml
+Copiar
+Editar
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: socialdevs-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: socialdevs-frontend
+  template:
+    metadata:
+      labels:
+        app: socialdevs-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: vhgalvez/socialdevs-frontend:latest
+          ports:
+            - containerPort: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: socialdevs-frontend
+spec:
+  selector:
+    app: socialdevs-frontend
+  ports:
+    - port: 80
+      targetPort: 80
+🧪 (Opcional) Verificar localmente con Docker
+bash
+Copiar
+Editar
+docker run -it --rm -p 8080:80 vhgalvez/socialdevs-frontend:latest
+Ir a: http://localhost:8080
+
