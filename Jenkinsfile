@@ -5,6 +5,7 @@ pipeline {
     IMAGE_NAME = "vhgalvez/socialdevs-public-frontend"
     IMAGE_TAG = "${BUILD_NUMBER}"
     GITOPS_REPO = "https://github.com/vhgalvez/socialdevs-gitops.git"
+    GITOPS_PATH = "apps/frontend/deployment.yaml"
   }
 
   stages {
@@ -20,21 +21,13 @@ pipeline {
       }
     }
 
-    stage('🐳 Construir imagen Docker') {
-      steps {
-        script {
-          sh """
-            docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-            docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
-          """
-        }
-      }
-    }
-
-    stage('🔐 Login y Push a Docker Hub') {
+    stage('🐳 Build & Push Docker') {
       steps {
         withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
           sh """
+            docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+            docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+
             echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
             docker push ${IMAGE_NAME}:${IMAGE_TAG}
             docker push ${IMAGE_NAME}:latest
@@ -43,25 +36,26 @@ pipeline {
       }
     }
 
-    stage('🚀 Actualizar GitOps') {
+    stage('🚀 GitOps: Update image tag') {
       steps {
-        sh """
-          git config --global user.name "CI Bot"
-          git config --global user.email "ci@socialdevs.dev"
-          rm -rf socialdevs-gitops
-          git clone ${GITOPS_REPO}
-          cd socialdevs-gitops/apps/frontend
-          sed -i "s|image: vhgalvez/socialdevs-public-frontend:.*|image: vhgalvez/socialdevs-public-frontend:${IMAGE_TAG}|" deployment.yaml
-          git commit -am "🔄 Update frontend image to ${IMAGE_TAG}"
-          git push https://github.com/vhgalvez/socialdevs-gitops.git main
-        """
+        withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
+          sh """
+            git config --global user.name "CI Bot"
+            git config --global user.email "ci@socialdevs.dev"
+            rm -rf gitops && git clone https://$GITHUB_TOKEN@github.com/vhgalvez/socialdevs-gitops.git gitops
+            cd gitops
+            sed -i 's|image: vhgalvez/socialdevs-public-frontend:.*|image: vhgalvez/socialdevs-public-frontend:${IMAGE_TAG}|' ${GITOPS_PATH}
+            git commit -am "🔄 Update frontend image to ${IMAGE_TAG}"
+            git push origin main
+          """
+        }
       }
     }
   }
 
   post {
     success {
-      echo "✅ Build exitoso → Imagen: ${IMAGE_NAME}:${IMAGE_TAG} desplegada vía GitOps"
+      echo "✅ Pipeline completo: Imagen publicada y GitOps actualizado"
     }
     failure {
       echo "❌ Error en el pipeline"
