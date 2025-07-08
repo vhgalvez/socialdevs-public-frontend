@@ -3,11 +3,11 @@ pipeline {
 
   environment {
     IMAGE_NAME = "vhgalvez/socialdevs-public-frontend"
-    IMAGE_TAG = "${BUILD_NUMBER}" // Usamos el número de build para versionar
+    IMAGE_TAG = "${BUILD_NUMBER}"
+    GITOPS_REPO = "https://github.com/vhgalvez/socialdevs-gitops.git"
   }
 
   stages {
-
     stage('📦 Instalar dependencias') {
       steps {
         sh 'npm install'
@@ -43,24 +43,28 @@ pipeline {
       }
     }
 
-    stage('🚀 (Opcional) Actualizar GitOps') {
-      when {
-        expression { return false }  // Cambia a `true` si quieres hacer push a gitops automáticamente
-      }
+    stage('🚀 Actualizar GitOps') {
       steps {
-        echo "Aquí podrías actualizar el manifiesto kustomize con la nueva versión: ${IMAGE_TAG}"
-        // Aquí podrías usar sed + git para actualizar el image tag en tu repositorio GitOps
+        sh """
+          git config --global user.name "CI Bot"
+          git config --global user.email "ci@socialdevs.dev"
+          rm -rf socialdevs-gitops
+          git clone ${GITOPS_REPO}
+          cd socialdevs-gitops/apps/frontend
+          sed -i "s|image: vhgalvez/socialdevs-public-frontend:.*|image: vhgalvez/socialdevs-public-frontend:${IMAGE_TAG}|" deployment.yaml
+          git commit -am "🔄 Update frontend image to ${IMAGE_TAG}"
+          git push https://github.com/vhgalvez/socialdevs-gitops.git main
+        """
       }
     }
-
   }
 
   post {
     success {
-      echo "✅ Build completado correctamente. Imagen: ${IMAGE_NAME}:${IMAGE_TAG}"
+      echo "✅ Build exitoso → Imagen: ${IMAGE_NAME}:${IMAGE_TAG} desplegada vía GitOps"
     }
     failure {
-      echo "❌ Error durante el pipeline"
+      echo "❌ Error en el pipeline"
     }
   }
 }
