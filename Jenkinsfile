@@ -9,9 +9,7 @@ metadata:
     jenkins/role: docker-builder
 spec:
   volumes:
-    - name: docker-graph
-      emptyDir: {}
-    - name: docker-certs
+    - name: docker-sock
       emptyDir: {}
     - name: workspace-volume
       emptyDir: {}
@@ -23,24 +21,35 @@ spec:
       env:
         - name: DOCKER_TLS_CERTDIR
           value: ""
-      ports:
-        - containerPort: 2375
+      command:
+        - dockerd
+        - --host=unix:///var/run/docker.sock
       volumeMounts:
-        - name: docker-graph
-          mountPath: /var/lib/docker
-        - name: docker-certs
-          mountPath: /certs/client
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
         - name: workspace-volume
           mountPath: /home/jenkins/agent
+
     - name: docker
       image: docker:25.0.3-cli
-      command: ["sh", "-c", "while ! docker info >/dev/null 2>&1; do echo '🕒 Esperando Docker...'; sleep 2; done; sleep 99d"]
+      command:
+        - sh
+        - -c
+        - |
+          while ! docker info >/dev/null 2>&1; do
+            echo '🕒 Esperando Docker...'
+            sleep 2
+          done
+          sleep 99d
       env:
         - name: DOCKER_HOST
-          value: tcp://localhost:2375
+          value: unix:///var/run/docker.sock
       volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
         - name: workspace-volume
           mountPath: /home/jenkins/agent
+
     - name: jnlp
       image: jenkins/inbound-agent:3283.v92c105e0f819-4
       env:
