@@ -31,8 +31,8 @@ spec:
 
     - name: docker
       image: docker:25.0.3-cli
-      command: ["cat"]  # <--- mantiene el contenedor activo
-      tty: true         # <--- necesario para que Jenkins pueda usarlo como shell
+      command: ["cat"]
+      tty: true
       env:
         - name: DOCKER_HOST
           value: tcp://localhost:2375
@@ -73,7 +73,7 @@ spec:
       steps {
         sh """
           echo '[INFO] Esperando a que Docker daemon esté disponible...'
-          timeout 60 bash -c 'while ! docker info >/dev/null 2>&1; do sleep 2; done'
+          timeout 60 sh -c 'i=0; while ! docker info >/dev/null 2>&1 && [ \$i -lt 30 ]; do sleep 2; i=\$((i+1)); done'
           echo '[INFO] Docker daemon listo.'
           docker version
 
