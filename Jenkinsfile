@@ -19,10 +19,11 @@ spec:
       env:
         - name: DOCKER_TLS_CERTDIR
           value: ""
-      command: ["dockerd"]
+      command:
+        - dockerd
       args:
-        - "--host=tcp://0.0.0.0:2375"
-        - "--host=unix:///var/run/docker.sock"
+        - --host=tcp://0.0.0.0:2375
+        - --host=unix:///var/run/docker.sock
       ports:
         - containerPort: 2375
       volumeMounts:
@@ -31,16 +32,6 @@ spec:
 
     - name: docker
       image: docker:25.0.3-cli
-      command:
-        - sh
-        - -c
-        - |
-          echo 'Esperando a que Docker esté disponible...'
-          while ! docker info >/dev/null 2>&1; do
-            sleep 2
-          done
-          echo 'Docker listo.'
-          sleep 99d
       env:
         - name: DOCKER_HOST
           value: tcp://localhost:2375
@@ -70,10 +61,21 @@ spec:
   }
 
   stages {
+
+    stage('🧾 Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
     stage('🐳 Build Docker Image') {
       steps {
         sh """
+          echo '[INFO] Esperando a que Docker daemon esté disponible...'
+          timeout 60 bash -c 'while ! docker info >/dev/null 2>&1; do sleep 2; done'
+          echo '[INFO] Docker daemon listo.'
           docker version
+
           docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
           docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
         """
@@ -81,53 +83,41 @@ spec:
     }
 
     stage('📤 Push Docker (si hay credencial)') {
+      when {
+        expression { env.DOCKER_REGISTRY_CREDENTIALS_ID != null }
+      }
       steps {
-        script {
-          env.DOCKER_PUSH_DONE = 'false'
-          try {
-            withCredentials([usernamePassword(credentialsId: 'dockerhub',
-                                              usernameVariable: 'DOCKER_USER',
-                                              passwordVariable: 'DOCKER_PASS')]) {
-              sh '''
-                echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                docker push ${IMAGE_NAME}:${IMAGE_TAG}
-                docker push ${IMAGE_NAME}:latest
-              '''
-              env.DOCKER_PUSH_DONE = 'true'
-            }
-          } catch (ignored) {
-            echo "⚠️  Credencial 'dockerhub' no encontrada, se omite el push"
-          }
+        withCredentials([usernamePassword(credentialsId: env.DOCKER_REGISTRY_CREDENTIALS_ID, passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
+          sh """
+            echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
+            docker push ${IMAGE_NAME}:${IMAGE_TAG}
+            docker push ${IMAGE_NAME}:latest
+          """
         }
       }
     }
 
     stage('🚀 GitOps: Update image tag') {
-      when {
-        expression { env.DOCKER_PUSH_DONE == 'true' }
-      }
       steps {
-        withCredentials([usernamePassword(credentialsId: 'git-creds',
-                                          usernameVariable: 'GIT_USER',
-                                          passwordVariable: 'GIT_PASS')]) {
-          sh '''
-            git config --global user.email "ci@socialdevs.dev"
-            git config --global user.name  "CI Bot"
-            rm -rf gitops
-            git clone https://${GIT_USER}:${GIT_PASS}@github.com/vhgalvez/socialdevs-gitops.git gitops
-            cd gitops
-            sed -i "s|image: vhgalvez/socialdevs-public-frontend:.*|image: vhgalvez/socialdevs-public-frontend:${IMAGE_TAG}|" ${GITOPS_PATH}
-            git add ${GITOPS_PATH}
-            git commit -m "🔄 Update frontend image to ${IMAGE_TAG}"
-            git push origin main
-          '''
-        }
+        git branch: 'main', url: "${GITOPS_REPO}"
+        sh """
+          sed -i 's|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|' ${GITOPS_PATH}
+          git config user.email "ci@socialdevs.dev"
+          git config user.name "CI Bot"
+          git commit -am "🔄 Actualiza imagen ${IMAGE_NAME} a tag ${IMAGE_TAG}"
+          git push origin main
+        """
       }
     }
+
   }
 
   post {
-    success { echo '✅ Pipeline completo: imagen construida y GitOps actualizado' }
-    failure { echo '❌ Error en el pipeline' }
+    failure {
+      echo "❌ Error en el pipeline"
+    }
+    success {
+      echo "✅ Pipeline finalizado con éxito"
+    }
   }
 }
