@@ -1,6 +1,56 @@
 pipeline {
   agent {
-    kubernetes { /* …tu YAML del podTemplate sin cambios… */ }
+    kubernetes {
+      yaml """
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    jenkins/role: docker-builder
+spec:
+  volumes:
+    - name: docker-graph
+      emptyDir: {}
+    - name: docker-certs
+      emptyDir: {}
+    - name: workspace-volume
+      emptyDir: {}
+  containers:
+    - name: dind-daemon
+      image: docker:25.0.3-dind
+      securityContext:
+        privileged: true
+      env:
+        - name: DOCKER_TLS_CERTDIR
+          value: ""
+      volumeMounts:
+        - name: docker-graph
+          mountPath: /var/lib/docker
+        - name: docker-certs
+          mountPath: /certs/client
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
+    - name: docker
+      image: docker:25.0.3-cli
+      command: ["sh", "-c", "sleep 99d"]
+      env:
+        - name: DOCKER_HOST
+          value: tcp://localhost:2375
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
+    - name: jnlp
+      image: jenkins/inbound-agent:3283.v92c105e0f819-4
+      env:
+        - name: JENKINS_AGENT_WORKDIR
+          value: /home/jenkins/agent
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
+  restartPolicy: Never
+"""
+      defaultContainer 'docker'
+    }
   }
 
   environment {
@@ -11,45 +61,61 @@ pipeline {
   }
 
   stages {
-    stage('🐳 Esperar Docker Daemon') { /* …sin cambios… */ }
 
-    stage('🐳 Build Docker Image') { /* …sin cambios… */ }
+    stage('🐳 Esperar Docker Daemon') {
+      steps {
+        sh '''
+          echo "⏳ Esperando que el Docker Daemon esté listo..."
+          for i in $(seq 1 30); do
+            docker info >/dev/null 2>&1 && { echo "✅ Docker daemon disponible"; exit 0; }
+            echo "⏳ Intento $i: docker aún no está listo..."
+            sleep 2
+          done
+          echo "❌ Timeout esperando Docker"; exit 1
+        '''
+      }
+    }
+
+    stage('🐳 Build Docker Image') {
+      steps {
+        sh """
+          docker version
+          docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+          docker tag  ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+        """
+      }
+    }
 
     stage('📤 Push Docker (si hay credencial)') {
       steps {
         script {
-          def pushed = false
+          env.DOCKER_PUSH_DONE = 'false'
           try {
-            withCredentials([usernamePassword(
-              credentialsId: 'dockerhub',
-              usernameVariable: 'DOCKER_USER',
-              passwordVariable: 'DOCKER_PASS'
-            )]) {
+            withCredentials([usernamePassword(credentialsId: 'dockerhub',
+                                              usernameVariable: 'DOCKER_USER',
+                                              passwordVariable: 'DOCKER_PASS')]) {
               sh '''
                 echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
                 docker push ${IMAGE_NAME}:${IMAGE_TAG}
                 docker push ${IMAGE_NAME}:latest
               '''
-              pushed = true
+              env.DOCKER_PUSH_DONE = 'true'
             }
-          } catch (e) {
-            echo "⚠️  Credencial 'dockerhub' no encontrada: se omite el push"
+          } catch (ignored) {
+            echo "⚠️  Credencial 'dockerhub' no encontrada, se omite el push"
           }
-          env.DOCKER_PUSH_DONE = pushed.toString()
         }
       }
     }
 
     stage('🚀 GitOps: Update image tag') {
       when {
-        expression { return env.DOCKER_PUSH_DONE == 'true' }
+        expression { env.DOCKER_PUSH_DONE == 'true' }
       }
       steps {
-        withCredentials([usernamePassword(
-          credentialsId: 'git-creds',
-          usernameVariable: 'GIT_USER',
-          passwordVariable: 'GIT_PASS'
-        )]) {
+        withCredentials([usernamePassword(credentialsId: 'git-creds',
+                                          usernameVariable: 'GIT_USER',
+                                          passwordVariable: 'GIT_PASS')]) {
           sh '''
             git config --global user.email "ci@socialdevs.dev"
             git config --global user.name  "CI Bot"
