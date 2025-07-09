@@ -38,9 +38,6 @@ spec:
     - sh
     - -c
     - |
-      echo '⏳ Esperando a que Docker daemon esté disponible...';
-      until docker info >/dev/null 2>&1; do sleep 2; done;
-      echo '✅ Docker está listo. Esperando instrucciones de Jenkins...';
       sleep 99d
     env:
     - name: DOCKER_HOST
@@ -72,12 +69,31 @@ spec:
   }
 
   stages {
+    stage('🐳 Esperar Docker Daemon') {
+      steps {
+        sh '''
+          echo "⏳ Esperando que el Docker Daemon esté listo..."
+          RETRIES=0
+          until docker info >/dev/null 2>&1; do
+            echo "⏳ Intento $RETRIES: docker daemon aún no está listo..."
+            sleep 2
+            RETRIES=$((RETRIES + 1))
+            if [ $RETRIES -ge 30 ]; then
+              echo "❌ Timeout esperando el Docker daemon"
+              exit 1
+            fi
+          done
+          echo "✅ Docker daemon disponible"
+        '''
+      }
+    }
+
     stage('🐳 Build Docker Image') {
       steps {
         sh """
           docker version
           docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-          docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+          docker tag  ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
         """
       }
     }
