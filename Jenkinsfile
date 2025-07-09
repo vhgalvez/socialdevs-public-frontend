@@ -19,6 +19,10 @@ spec:
       env:
         - name: DOCKER_TLS_CERTDIR
           value: ""
+      command: ["dockerd"]
+      args:
+        - "--host=tcp://0.0.0.0:2375"
+        - "--host=unix:///var/run/docker.sock"
       ports:
         - containerPort: 2375
       volumeMounts:
@@ -31,10 +35,11 @@ spec:
         - sh
         - -c
         - |
+          echo 'Esperando a que Docker esté disponible...'
           while ! docker info >/dev/null 2>&1; do
-            echo '🕒 Esperando Docker...'
             sleep 2
           done
+          echo 'Docker listo.'
           sleep 99d
       env:
         - name: DOCKER_HOST
