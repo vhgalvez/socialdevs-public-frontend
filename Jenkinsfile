@@ -9,8 +9,6 @@ metadata:
     jenkins/role: docker-builder
 spec:
   volumes:
-    - name: docker-sock
-      emptyDir: {}
     - name: workspace-volume
       emptyDir: {}
   containers:
@@ -21,12 +19,9 @@ spec:
       env:
         - name: DOCKER_TLS_CERTDIR
           value: ""
-      command:
-        - dockerd
-        - --host=unix:///var/run/docker.sock
+      ports:
+        - containerPort: 2375
       volumeMounts:
-        - name: docker-sock
-          mountPath: /var/run/docker.sock
         - name: workspace-volume
           mountPath: /home/jenkins/agent
 
@@ -43,10 +38,8 @@ spec:
           sleep 99d
       env:
         - name: DOCKER_HOST
-          value: unix:///var/run/docker.sock
+          value: tcp://localhost:2375
       volumeMounts:
-        - name: docker-sock
-          mountPath: /var/run/docker.sock
         - name: workspace-volume
           mountPath: /home/jenkins/agent
 
