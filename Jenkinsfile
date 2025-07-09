@@ -1,3 +1,4 @@
+ # Jenkinsfile
 pipeline {
   agent {
     kubernetes {
@@ -8,40 +9,44 @@ metadata:
   labels:
     jenkins/role: docker-builder
 spec:
+  # Volúmenes temporales ---------------
   volumes:
-  - name: docker-graph        # almacén del daemon
+  - name: docker-graph          # almacén del daemon
     emptyDir: {}
-  - name: docker-certs        # TLS desactivado → carpeta vacía
+  - name: docker-certs          # carpeta vacía (TLS OFF)
     emptyDir: {}
+  - name: workspace-volume      # /home/jenkins/agent
+    emptyDir: {}
+
+  # ---- Daemon Docker (dind) ----------
   containers:
-  # ➜ daemon Docker
   - name: dind-daemon
     image: docker:25.0.3-dind
     securityContext:
-      privileged: true        # dind necesita acceso a cgroups
+      privileged: true           # dind necesita cgroups
     env:
-    - name: DOCKER_TLS_CERTDIR
-      value: ""               # desactiva TLS en dind
+    - name: DOCKER_TLS_CERTDIR   # desactiva TLS interno
+      value: ""
     volumeMounts:
     - name: docker-graph
       mountPath: /var/lib/docker
     - name: docker-certs
       mountPath: /certs/client
-  # ➜ CLI Docker (ejecuta los comandos del pipeline)
-  - name: docker
-    image: docker:25.0.3-cli
-    command: ["sh", "-c", "sleep 99d"]   # lo mantiene vivo
-    env:
-    - name: DOCKER_HOST
-      value: tcp://localhost:2375        # habla con el sidecar
-    - name: DOCKER_TLS_VERIFY
-      value: "0"
-    volumeMounts:
-    - name: docker-certs
-      mountPath: /certs/client:ro
     - name: workspace-volume
       mountPath: /home/jenkins/agent
-  # ➜ JNLP (canal Jenkins ⇄ agente)
+
+  # ---- CLI Docker --------------------
+  - name: docker
+    image: docker:25.0.3-cli
+    command: ["sh", "-c", "sleep 99d"]   # mantiene vivo el contenedor
+    env:
+    - name: DOCKER_HOST                 # comunicación sin TLS
+      value: tcp://localhost:2375
+    volumeMounts:
+    - name: workspace-volume
+      mountPath: /home/jenkins/agent
+
+  # ---- JNLP (canal Jenkins) ----------
   - name: jnlp
     image: jenkins/inbound-agent:3283.v92c105e0f819-4
     env:
@@ -50,12 +55,14 @@ spec:
     volumeMounts:
     - name: workspace-volume
       mountPath: /home/jenkins/agent
+
   restartPolicy: Never
 """
       defaultContainer 'docker'
     }
   }
 
+  /* ---------- Variables de entorno ---------- */
   environment {
     IMAGE_NAME  = "vhgalvez/socialdevs-public-frontend"
     IMAGE_TAG   = "${BUILD_NUMBER}"
@@ -63,18 +70,21 @@ spec:
     GITOPS_PATH = "apps/socialdevs-frontend/deployment.yaml"
   }
 
+  /* --------------- Stages ------------------- */
   stages {
-    /* ── 🐳 BUILD & TAG ───────────────────────────── */
+
+    /* 🐳 Build & tag -------------------------- */
     stage('🐳 Build Docker Image') {
       steps {
         sh """
+          docker version
           docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-          docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+          docker tag  ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
         """
       }
     }
 
-    /* ── 📤 PUSH (si hay credencial) ──────────────── */
+    /* 📤 Push (si existe credencial) ---------- */
     stage('📤 Push Docker (si hay credencial)') {
       when {
         expression {
@@ -100,7 +110,7 @@ spec:
       }
     }
 
-    /* ── 🚀 GITOPS UPDATE ─────────────────────────── */
+    /* 🚀 GitOps: actualizar Deployment -------- */
     stage('🚀 GitOps: Update image tag') {
       steps {
         withCredentials([usernamePassword(
@@ -111,6 +121,7 @@ spec:
           sh '''
             git config --global user.email "ci@socialdevs.dev"
             git config --global user.name  "CI Bot"
+
             rm -rf gitops
             git clone https://${GIT_USER}:${GIT_PASS}@github.com/vhgalvez/socialdevs-gitops.git gitops
             cd gitops
@@ -124,6 +135,7 @@ spec:
     }
   }
 
+  /* ------------- Post actions --------------- */
   post {
     success { echo '✅ Pipeline completo: imagen construida y GitOps actualizado' }
     failure { echo '❌ Error en el pipeline' }
