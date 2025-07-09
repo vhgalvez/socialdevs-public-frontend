@@ -23,6 +23,8 @@ spec:
       env:
         - name: DOCKER_TLS_CERTDIR
           value: ""
+      ports:
+        - containerPort: 2375
       volumeMounts:
         - name: docker-graph
           mountPath: /var/lib/docker
@@ -32,7 +34,7 @@ spec:
           mountPath: /home/jenkins/agent
     - name: docker
       image: docker:25.0.3-cli
-      command: ["sh", "-c", "sleep 99d"]
+      command: ["sh", "-c", "while ! docker info >/dev/null 2>&1; do echo '🕒 Esperando Docker...'; sleep 2; done; sleep 99d"]
       env:
         - name: DOCKER_HOST
           value: tcp://localhost:2375
@@ -61,27 +63,12 @@ spec:
   }
 
   stages {
-
-    stage('🐳 Esperar Docker Daemon') {
-      steps {
-        sh '''
-          echo "⏳ Esperando que el Docker Daemon esté listo..."
-          for i in $(seq 1 30); do
-            docker info >/dev/null 2>&1 && { echo "✅ Docker daemon disponible"; exit 0; }
-            echo "⏳ Intento $i: docker aún no está listo..."
-            sleep 2
-          done
-          echo "❌ Timeout esperando Docker"; exit 1
-        '''
-      }
-    }
-
     stage('🐳 Build Docker Image') {
       steps {
         sh """
           docker version
           docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-          docker tag  ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+          docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
         """
       }
     }
