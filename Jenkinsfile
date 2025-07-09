@@ -4,22 +4,53 @@ pipeline {
       yaml """
 apiVersion: v1
 kind: Pod
+metadata:
+  labels:
+    jenkins/role: docker-builder
 spec:
+  volumes:
+  - name: docker-graph        # almacén del daemon
+    emptyDir: {}
+  - name: docker-certs        # TLS desactivado → carpeta vacía
+    emptyDir: {}
   containers:
+  # ➜ daemon Docker
+  - name: dind-daemon
+    image: docker:25.0.3-dind
+    securityContext:
+      privileged: true        # dind necesita acceso a cgroups
+    env:
+    - name: DOCKER_TLS_CERTDIR
+      value: ""               # desactiva TLS en dind
+    volumeMounts:
+    - name: docker-graph
+      mountPath: /var/lib/docker
+    - name: docker-certs
+      mountPath: /certs/client
+  # ➜ CLI Docker (ejecuta los comandos del pipeline)
   - name: docker
     image: docker:25.0.3-cli
-    command:
-    - cat
-    tty: true
-    securityContext:
-      privileged: true
+    command: ["sh", "-c", "sleep 99d"]   # lo mantiene vivo
+    env:
+    - name: DOCKER_HOST
+      value: tcp://localhost:2375        # habla con el sidecar
+    - name: DOCKER_TLS_VERIFY
+      value: "0"
     volumeMounts:
-    - name: docker-sock
-      mountPath: /var/run/docker.sock
-  volumes:
-  - name: docker-sock
-    hostPath:
-      path: /var/run/docker.sock
+    - name: docker-certs
+      mountPath: /certs/client:ro
+    - name: workspace-volume
+      mountPath: /home/jenkins/agent
+  # ➜ JNLP (canal Jenkins ⇄ agente)
+  - name: jnlp
+    image: jenkins/inbound-agent:3283.v92c105e0f819-4
+    env:
+    - name: JENKINS_AGENT_WORKDIR
+      value: /home/jenkins/agent
+    volumeMounts:
+    - name: workspace-volume
+      mountPath: /home/jenkins/agent
+  restartPolicy: Never
 """
       defaultContainer 'docker'
     }
@@ -33,6 +64,7 @@ spec:
   }
 
   stages {
+    /* ── 🐳 BUILD & TAG ───────────────────────────── */
     stage('🐳 Build Docker Image') {
       steps {
         sh """
@@ -42,15 +74,15 @@ spec:
       }
     }
 
+    /* ── 📤 PUSH (si hay credencial) ──────────────── */
     stage('📤 Push Docker (si hay credencial)') {
       when {
         expression {
-          def creds = com.cloudbees.plugins.credentials.CredentialsProvider
+          com.cloudbees.plugins.credentials.CredentialsProvider
             .lookupCredentials(
-              com.cloudbees.plugins.credentials.common.StandardUsernameCredentials.class,
+              com.cloudbees.plugins.credentials.common.StandardUsernameCredentials,
               Jenkins.instance
-            )
-          return creds.find { it.id == 'dockerhub' } != null
+            ).find { it.id == 'dockerhub' } != null
         }
       }
       steps {
@@ -59,15 +91,16 @@ spec:
           usernameVariable: 'DOCKER_USER',
           passwordVariable: 'DOCKER_PASS'
         )]) {
-          sh """
+          sh '''
             echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
             docker push ${IMAGE_NAME}:${IMAGE_TAG}
             docker push ${IMAGE_NAME}:latest
-          """
+          '''
         }
       }
     }
 
+    /* ── 🚀 GITOPS UPDATE ─────────────────────────── */
     stage('🚀 GitOps: Update image tag') {
       steps {
         withCredentials([usernamePassword(
@@ -75,10 +108,9 @@ spec:
           usernameVariable: 'GIT_USER',
           passwordVariable: 'GIT_PASS'
         )]) {
-          sh """
+          sh '''
             git config --global user.email "ci@socialdevs.dev"
             git config --global user.name  "CI Bot"
-
             rm -rf gitops
             git clone https://${GIT_USER}:${GIT_PASS}@github.com/vhgalvez/socialdevs-gitops.git gitops
             cd gitops
@@ -86,18 +118,14 @@ spec:
             git add ${GITOPS_PATH}
             git commit -m "🔄 Update frontend image to ${IMAGE_TAG}"
             git push origin main
-          """
+          '''
         }
       }
     }
   }
 
   post {
-    success {
-      echo "✅ Pipeline completo: imagen construida y GitOps actualizado"
-    }
-    failure {
-      echo "❌ Error en el pipeline"
-    }
+    success { echo '✅ Pipeline completo: imagen construida y GitOps actualizado' }
+    failure { echo '❌ Error en el pipeline' }
   }
 }
