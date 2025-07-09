@@ -8,23 +8,21 @@ metadata:
   labels:
     jenkins/role: docker-builder
 spec:
-  # Volúmenes temporales ---------------
   volumes:
-  - name: docker-graph          # almacén del daemon
+  - name: docker-graph
     emptyDir: {}
-  - name: docker-certs          # carpeta vacía (TLS OFF)
+  - name: docker-certs
     emptyDir: {}
-  - name: workspace-volume      # /home/jenkins/agent
+  - name: workspace-volume
     emptyDir: {}
 
-  # ---- Daemon Docker (dind) ----------
   containers:
   - name: dind-daemon
     image: docker:25.0.3-dind
     securityContext:
-      privileged: true           # dind necesita cgroups
+      privileged: true
     env:
-    - name: DOCKER_TLS_CERTDIR   # desactiva TLS interno
+    - name: DOCKER_TLS_CERTDIR
       value: ""
     volumeMounts:
     - name: docker-graph
@@ -34,18 +32,23 @@ spec:
     - name: workspace-volume
       mountPath: /home/jenkins/agent
 
-  # ---- CLI Docker --------------------
   - name: docker
     image: docker:25.0.3-cli
-    command: ["sh", "-c", "sleep 99d"]   # mantiene vivo el contenedor
+    command:
+    - sh
+    - -c
+    - |
+      echo '⏳ Esperando a que Docker daemon esté disponible...';
+      until docker info >/dev/null 2>&1; do sleep 2; done;
+      echo '✅ Docker está listo. Esperando instrucciones de Jenkins...';
+      sleep 99d
     env:
-    - name: DOCKER_HOST                 # comunicación sin TLS
+    - name: DOCKER_HOST
       value: tcp://localhost:2375
     volumeMounts:
     - name: workspace-volume
       mountPath: /home/jenkins/agent
 
-  # ---- JNLP (canal Jenkins) ----------
   - name: jnlp
     image: jenkins/inbound-agent:3283.v92c105e0f819-4
     env:
@@ -61,7 +64,6 @@ spec:
     }
   }
 
-  /* ---------- Variables de entorno ---------- */
   environment {
     IMAGE_NAME  = "vhgalvez/socialdevs-public-frontend"
     IMAGE_TAG   = "${BUILD_NUMBER}"
@@ -69,21 +71,17 @@ spec:
     GITOPS_PATH = "apps/socialdevs-frontend/deployment.yaml"
   }
 
-  /* --------------- Stages ------------------- */
   stages {
-
-    /* 🐳 Build & tag -------------------------- */
     stage('🐳 Build Docker Image') {
       steps {
         sh """
           docker version
           docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-          docker tag  ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+          docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
         """
       }
     }
 
-    /* 📤 Push (si existe credencial) ---------- */
     stage('📤 Push Docker (si hay credencial)') {
       when {
         expression {
@@ -109,7 +107,6 @@ spec:
       }
     }
 
-    /* 🚀 GitOps: actualizar Deployment -------- */
     stage('🚀 GitOps: Update image tag') {
       steps {
         withCredentials([usernamePassword(
@@ -120,7 +117,6 @@ spec:
           sh '''
             git config --global user.email "ci@socialdevs.dev"
             git config --global user.name  "CI Bot"
-
             rm -rf gitops
             git clone https://${GIT_USER}:${GIT_PASS}@github.com/vhgalvez/socialdevs-gitops.git gitops
             cd gitops
@@ -134,9 +130,12 @@ spec:
     }
   }
 
-  /* ------------- Post actions --------------- */
   post {
-    success { echo '✅ Pipeline completo: imagen construida y GitOps actualizado' }
-    failure { echo '❌ Error en el pipeline' }
+    success {
+      echo '✅ Pipeline completo: imagen construida y GitOps actualizado'
+    }
+    failure {
+      echo '❌ Error en el pipeline'
+    }
   }
 }
