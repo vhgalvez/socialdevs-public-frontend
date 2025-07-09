@@ -1,5 +1,29 @@
 pipeline {
-  agent any
+  agent {
+    kubernetes {
+      yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: docker
+    image: docker:25.0.3-cli
+    command:
+    - cat
+    tty: true
+    securityContext:
+      privileged: true
+    volumeMounts:
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
+  volumes:
+  - name: docker-sock
+    hostPath:
+      path: /var/run/docker.sock
+"""
+      defaultContainer 'docker'
+    }
+  }
 
   environment {
     IMAGE_NAME  = "vhgalvez/socialdevs-public-frontend"
@@ -9,30 +33,23 @@ pipeline {
   }
 
   stages {
-
-    /* ───────────────────────────────────────────────
-       🐳  Build & (opcional) Push Docker
-       Si la credencial 'dockerhub' existe => push
-       Si no existe => solo build local (no falla)
-       ─────────────────────────────────────────────── */
     stage('🐳 Build Docker Image') {
       steps {
         sh """
           docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-          docker tag  ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+          docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
         """
       }
     }
 
     stage('📤 Push Docker (si hay credencial)') {
       when {
-        expression { 
-          // Devuelve true solo si existe credencial con ID 'dockerhub'
+        expression {
           def creds = com.cloudbees.plugins.credentials.CredentialsProvider
-                        .lookupCredentials(
-                          com.cloudbees.plugins.credentials.common.StandardUsernameCredentials.class,
-                          Jenkins.instance
-                        )
+            .lookupCredentials(
+              com.cloudbees.plugins.credentials.common.StandardUsernameCredentials.class,
+              Jenkins.instance
+            )
           return creds.find { it.id == 'dockerhub' } != null
         }
       }
@@ -51,9 +68,6 @@ pipeline {
       }
     }
 
-    /* ───────────────────────────────────────────────
-       🚀  GitOps: Actualizar deployment.yaml
-       ─────────────────────────────────────────────── */
     stage('🚀 GitOps: Update image tag') {
       steps {
         withCredentials([usernamePassword(
