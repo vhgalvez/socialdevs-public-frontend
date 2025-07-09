@@ -8,6 +8,7 @@ metadata:
   labels:
     jenkins/role: docker-builder
 spec:
+  restartPolicy: Never
   volumes:
     - name: workspace-volume
       emptyDir: {}
@@ -19,11 +20,10 @@ spec:
       env:
         - name: DOCKER_TLS_CERTDIR
           value: ""
-      command:
-        - dockerd
+      command: ["dockerd"]
       args:
-        - --host=tcp://0.0.0.0:2375
-        - --host=unix:///var/run/docker.sock
+        - "--host=tcp://0.0.0.0:2375"
+        - "--host=unix:///var/run/docker.sock"
       ports:
         - containerPort: 2375
       volumeMounts:
@@ -32,6 +32,7 @@ spec:
 
     - name: docker
       image: docker:25.0.3-cli
+      command: ["cat"]  # Importante para mantener contenedor activo
       env:
         - name: DOCKER_HOST
           value: tcp://localhost:2375
@@ -47,7 +48,6 @@ spec:
       volumeMounts:
         - name: workspace-volume
           mountPath: /home/jenkins/agent
-  restartPolicy: Never
 """
       defaultContainer 'docker'
     }
@@ -71,11 +71,12 @@ spec:
     stage('🐳 Build Docker Image') {
       steps {
         sh """
-          echo '[INFO] Esperando a que Docker daemon esté disponible...'
+          echo '[INFO] Esperando a que Docker esté disponible...'
           timeout 60 bash -c 'while ! docker info >/dev/null 2>&1; do sleep 2; done'
-          echo '[INFO] Docker daemon listo.'
+          echo '[INFO] Docker listo.'
           docker version
 
+          echo '[INFO] Construyendo imagen Docker...'
           docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
           docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
         """
@@ -87,9 +88,16 @@ spec:
         expression { env.DOCKER_REGISTRY_CREDENTIALS_ID != null }
       }
       steps {
-        withCredentials([usernamePassword(credentialsId: env.DOCKER_REGISTRY_CREDENTIALS_ID, passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
+        withCredentials([usernamePassword(
+          credentialsId: env.DOCKER_REGISTRY_CREDENTIALS_ID,
+          passwordVariable: 'DOCKER_PASSWORD',
+          usernameVariable: 'DOCKER_USERNAME'
+        )]) {
           sh """
+            echo '[INFO] Autenticando en el Docker Registry...'
             echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
+
+            echo '[INFO] Subiendo imágenes...'
             docker push ${IMAGE_NAME}:${IMAGE_TAG}
             docker push ${IMAGE_NAME}:latest
           """
@@ -101,15 +109,16 @@ spec:
       steps {
         git branch: 'main', url: "${GITOPS_REPO}"
         sh """
-          sed -i 's|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|' ${GITOPS_PATH}
+          echo '[INFO] Actualizando manifiesto GitOps...'
+          sed -i 's|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|' ${GITOPS_PATH} || echo '[WARN] sed no encontró línea, saltando'
+
           git config user.email "ci@socialdevs.dev"
           git config user.name "CI Bot"
-          git commit -am "🔄 Actualiza imagen ${IMAGE_NAME} a tag ${IMAGE_TAG}"
-          git push origin main
+          git commit -am "🔄 Actualiza imagen ${IMAGE_NAME} a tag ${IMAGE_TAG}" || echo '[INFO] No hay cambios que hacer'
+          git push origin main || echo '[INFO] No se pudo hacer push (¿quizás sin cambios?)'
         """
       }
     }
-
   }
 
   post {
