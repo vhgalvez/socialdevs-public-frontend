@@ -59,6 +59,7 @@ spec:
     IMAGE_TAG   = "${BUILD_NUMBER}"
     GITOPS_REPO = "https://github.com/vhgalvez/socialdevs-gitops.git"
     GITOPS_PATH = "apps/socialdevs-frontend/deployment.yaml"
+    DOCKER_REGISTRY_CREDENTIALS_ID = 'dockerhub-credentials' // Añadido
   }
 
   stages {
@@ -88,7 +89,11 @@ spec:
         expression { env.DOCKER_REGISTRY_CREDENTIALS_ID != null }
       }
       steps {
-        withCredentials([usernamePassword(credentialsId: env.DOCKER_REGISTRY_CREDENTIALS_ID, passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
+        withCredentials([usernamePassword(
+          credentialsId: env.DOCKER_REGISTRY_CREDENTIALS_ID,
+          passwordVariable: 'DOCKER_PASSWORD',
+          usernameVariable: 'DOCKER_USERNAME'
+        )]) {
           sh """
             echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
             docker push ${IMAGE_NAME}:${IMAGE_TAG}

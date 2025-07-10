@@ -242,3 +242,85 @@ Jenkins actualiza deployment.yaml en el repo GitOps
 
 ArgoCD detecta el cambio y aplica automáticamente el despliegue
 
+
+
+
+__
+🔄 FLUJO CI/CD COMPLETO: GitHub → Jenkins → Docker Hub → ArgoCD → K3s
+text
+Copiar
+Editar
+          [ DEV - Código fuente ]
+                   │
+            Git Push a GitHub
+           ┌─────────────────────┐
+           │ socialdevs-public-  │
+           │ frontend (Vue.js)   │
+           └─────────────────────┘
+                   │
+                   ▼
+           Jenkins ejecuta CI Pipeline
+           ┌────────────────────────────┐
+           │ Jenkinsfile:               │
+           │  1. docker build           │
+           │  2. docker push            │
+           │  3. update GitOps repo     │
+           └────────────────────────────┘
+                   │
+                   ▼
+           Docker Hub (registro)
+           ┌─────────────────────┐
+           │ vhgalvez/socialdevs │
+           └─────────────────────┘
+                   │
+                   ▼
+        Git Push a socialdevs-gitops
+        ┌──────────────────────────────┐
+        │ ArgoCD detecta cambio en     │
+        │ deployment.yaml (imagen nueva)│
+        └──────────────────────────────┘
+                   │
+                   ▼
+         ArgoCD sincroniza en:
+      ┌─────────────────────┐
+      │    [K3d Local]      │ ← entorno test
+      └─────────────────────┘
+                   │
+                   ▼
+      ┌─────────────────────┐
+      │    [K3s Producción]  │ ← tu servidor físico con Traefik, PVCs, NFS, etc.
+      └─────────────────────┘
+📂 Repositorios involucrados
+Repositorio GitHub	Descripción
+socialdevs-public-frontend	Vue.js + Dockerfile + Jenkinsfile
+socialdevs-gitops	Kustomize: deployment.yaml, service.yaml, ingress.yaml
+argocd-bootstrap_local_k3d	Instala y configura ArgoCD en k3d (para testing local)
+Jenkins_k3d_local	Instala Jenkins con Helm en K3d, usa jenkins-values.yaml
+
+🧪 Flujo de Testing en k3d
+Jenkins se ejecuta en un pod de k3d usando Helm.
+
+El agente DinD construye la imagen con Docker in Docker.
+
+Se sube la imagen a Docker Hub.
+
+Jenkins actualiza deployment.yaml en socialdevs-gitops.
+
+ArgoCD sincroniza y despliega el pod en k3d.
+
+🚀 Flujo de Producción en K3s
+Validas el build en k3d.
+
+Si está todo correcto, haces push/tag (o cherry-pick) en rama main de producción.
+
+Jenkins vuelve a ejecutar build/push/update en el GitOps repo.
+
+ArgoCD en el cluster real (K3s) detecta el cambio y despliega automáticamente en tu servidor físico.
+
+✅ Ventajas del Flujo
+Ventaja	Detalle
+🔁 GitOps puro	Jenkins no toca K8s directamente. ArgoCD hace el despliegue.
+🔐 Seguridad	Jenkins no necesita acceso al cluster. Solo ArgoCD tiene permisos.
+🧪 Separación test/producción	k3d permite validar todo antes de desplegar en tu K3s productivo.
+📦 Contenedores versionados	Imágenes con tags únicos por BUILD_NUMBER o commit SHA
+🔄 Idempotencia y trazabilidad	ArgoCD gestiona el estado deseado en Git (declarativo)
