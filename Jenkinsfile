@@ -64,12 +64,12 @@ spec:
   }
 
   environment {
-    IMAGE_NAME  = "vhgalvez/socialdevs-public-frontend"
+    IMAGE_NAME  = 'vhgalvez/socialdevs-public-frontend'
     IMAGE_TAG   = "${BUILD_NUMBER}"
-    GITOPS_REPO = "https://github.com/vhgalvez/socialdevs-gitops.git"
-    GITOPS_PATH = "apps/socialdevs-frontend/deployment.yaml"
+    GITOPS_REPO = 'https://github.com/vhgalvez/socialdevs-gitops.git'
+    GITOPS_PATH = 'apps/socialdevs-frontend/deployment.yaml'
     DOCKER_REGISTRY_CREDENTIALS_ID = 'dockerhub-credentials'
-    GITHUB_CREDENTIALS_ID = 'github-ci-token'
+    GITHUB_CREDENTIALS_ID          = 'github-ci-token'
   }
 
   stages {
@@ -103,7 +103,7 @@ spec:
           echo "[INFO] Docker listo."
 
           docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-          docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+          docker tag  ${IMAGE_NAME}:${IMAGE_TAG}  ${IMAGE_NAME}:latest
         '''
       }
     }
@@ -128,24 +128,26 @@ spec:
       steps {
         withCredentials([usernamePassword(
           credentialsId: GITHUB_CREDENTIALS_ID,
-          usernameVariable: 'GIT_USER',
-          passwordVariable: 'GIT_TOKEN'
+          usernameVariable: 'GH_USER',
+          passwordVariable: 'GH_TOKEN'
         )]) {
-          script {
-            def gitopsTmpDir = "gitops-tmp"
-            sh "git clone https://${GIT_USER}:${GIT_TOKEN}@github.com/vhgalvez/socialdevs-gitops.git ${gitopsTmpDir}"
-            dir(gitopsTmpDir) {
-              sh """
-                git config user.email "ci@socialdevs.dev"
-                git config user.name "CI Bot"
+          sh '''
+            set -e
+            git clone https://${GH_USER}:${GH_TOKEN}@github.com/vhgalvez/socialdevs-gitops.git gitops-tmp
+            cd gitops-tmp
 
-                sed -i 's|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|' ${GITOPS_PATH}
-                git add ${GITOPS_PATH}
-                git commit -m "🔄 Actualiza a ${IMAGE_NAME}:${IMAGE_TAG}"
-                git push origin main
-              """
-            }
-          }
+            git config user.name  "CI Bot"
+            git config user.email "ci@socialdevs.dev"
+
+            sed -i "s|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|" ${GITOPS_PATH}
+            git add ${GITOPS_PATH}
+            if ! git diff --cached --quiet; then
+              git commit -m "🔄 Actualiza a ${IMAGE_NAME}:${IMAGE_TAG}"
+              git push origin main
+            else
+              echo "[INFO] Manifiesto ya actualizado, no hay cambios que subir."
+            fi
+          '''
         }
       }
     }
