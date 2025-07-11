@@ -12,7 +12,6 @@ spec:
     - name: workspace-volume
       emptyDir: {}
   containers:
-    # ⛽ DinD daemon
     - name: dind-daemon
       image: docker:25.0.3-dind
       securityContext:
@@ -30,9 +29,8 @@ spec:
         - name: workspace-volume
           mountPath: /home/jenkins/agent
 
-    # 🐳 + 🐙 Docker CLI + Git (alpine -> instalamos git dinámicamente)
     - name: docker
-      image: docker:25.0.3-cli
+      image: vhgalvez/docker-git-cli:25.0.3
       command: ["cat"]
       tty: true
       env:
@@ -42,7 +40,6 @@ spec:
         - name: workspace-volume
           mountPath: /home/jenkins/agent
 
-    # 📡 Agente JNLP
     - name: jnlp
       image: jenkins/inbound-agent:3283.v92c105e0f819-4
       env:
@@ -74,7 +71,7 @@ spec:
       steps {
         sh '''
           echo "[INFO] Esperando Docker daemon…"
-          for i in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 2; done
+          timeout 60 bash -c 'until docker info >/dev/null 2>&1; do sleep 2; done'
           echo "[INFO] Docker listo."
 
           docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
@@ -101,20 +98,16 @@ spec:
 
     stage('🚀 GitOps: actualiza manifiesto') {
       steps {
-        // clona repo GitOps en este mismo workspace
         git branch: 'main', url: GITOPS_REPO
 
-        sh """
-          echo '[INFO] Instalando git…'
-          apk add --no-cache git >/dev/null
-
+        sh '''
           sed -i 's|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|' ${GITOPS_PATH}
 
           git config user.email 'ci@socialdevs.dev'
           git config user.name  'CI Bot'
           git commit -am "🔄 ${IMAGE_NAME}:${IMAGE_TAG}"
           git push origin main
-        """
+        '''
       }
     }
   }
