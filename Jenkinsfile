@@ -69,7 +69,7 @@ spec:
     GITOPS_REPO = 'https://github.com/vhgalvez/socialdevs-gitops.git'
     GITOPS_PATH = 'apps/socialdevs-frontend/deployment.yaml'
     DOCKER_REGISTRY_CREDENTIALS_ID = 'dockerhub-credentials'
-    GITHUB_PAT_CREDENTIALS_ID      = 'github-pat' // ✅ string credential
+    GITHUB_CREDENTIALS_ID          = 'github-ci-token' // ✅ ID correcto
   }
 
   stages {
@@ -126,22 +126,27 @@ spec:
 
     stage('🚀 GitOps: actualiza manifiesto') {
       steps {
-        withCredentials([string(credentialsId: GITHUB_PAT_CREDENTIALS_ID, variable: 'GH_TOKEN')]) {
+        withCredentials([usernamePassword(
+          credentialsId: GITHUB_CREDENTIALS_ID,
+          usernameVariable: 'GH_USER',
+          passwordVariable: 'GH_TOKEN'
+        )]) {
           sh '''
             set -e
-            git clone https://github.com/vhgalvez/socialdevs-gitops.git gitops-tmp
+            git clone https://${GH_USER}:${GH_TOKEN}@github.com/vhgalvez/socialdevs-gitops.git gitops-tmp
             cd gitops-tmp
 
             git config user.name  "CI Bot"
             git config user.email "ci@socialdevs.dev"
 
-            git remote set-url origin https://${GH_TOKEN}:x-oauth-basic@github.com/vhgalvez/socialdevs-gitops.git
-
             sed -i "s|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|" ${GITOPS_PATH}
             git add ${GITOPS_PATH}
-            git diff --cached --quiet || git commit -m "🔄 Actualiza a ${IMAGE_NAME}:${IMAGE_TAG}"
-
-            git push origin main
+            if ! git diff --cached --quiet; then
+              git commit -m "🔄 Actualiza a ${IMAGE_NAME}:${IMAGE_TAG}"
+              git push origin main
+            else
+              echo "[INFO] Manifiesto ya actualizado, no hay cambios que subir."
+            fi
           '''
         }
       }
