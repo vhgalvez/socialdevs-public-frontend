@@ -59,11 +59,10 @@ spec:
     IMAGE_TAG   = "${BUILD_NUMBER}"
     GITOPS_REPO = "https://github.com/vhgalvez/socialdevs-gitops.git"
     GITOPS_PATH = "apps/socialdevs-frontend/deployment.yaml"
-    DOCKER_REGISTRY_CREDENTIALS_ID = 'dockerhub-credentials' // Añadido
+    DOCKER_REGISTRY_CREDENTIALS_ID = 'dockerhub-credentials'
   }
 
   stages {
-
     stage('🧾 Checkout') {
       steps {
         checkout scm
@@ -72,33 +71,29 @@ spec:
 
     stage('🐳 Build Docker Image') {
       steps {
-        sh """
-          echo '[INFO] Esperando a que Docker daemon esté disponible...'
-          timeout 60 sh -c 'i=0; while ! docker info >/dev/null 2>&1 && [ \$i -lt 30 ]; do sleep 2; i=\$((i+1)); done'
-          echo '[INFO] Docker daemon listo.'
-          docker version
+        sh '''
+          echo "[INFO] Esperando a que Docker daemon esté disponible..."
+          i=0; until docker info >/dev/null 2>&1 || [ $i -gt 30 ]; do sleep 2; i=$((i+1)); done
+          echo "[INFO] Docker daemon listo."
 
           docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
           docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
-        """
+        '''
       }
     }
 
-    stage('📤 Push Docker (si hay credencial)') {
-      when {
-        expression { env.DOCKER_REGISTRY_CREDENTIALS_ID != null }
-      }
+    stage('📤 Push Docker') {
       steps {
         withCredentials([usernamePassword(
-          credentialsId: env.DOCKER_REGISTRY_CREDENTIALS_ID,
-          passwordVariable: 'DOCKER_PASSWORD',
-          usernameVariable: 'DOCKER_USERNAME'
+          credentialsId: "${DOCKER_REGISTRY_CREDENTIALS_ID}",
+          usernameVariable: 'DOCKER_USERNAME',
+          passwordVariable: 'DOCKER_PASSWORD'
         )]) {
-          sh """
+          sh '''
             echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
             docker push ${IMAGE_NAME}:${IMAGE_TAG}
             docker push ${IMAGE_NAME}:latest
-          """
+          '''
         }
       }
     }
@@ -115,7 +110,6 @@ spec:
         """
       }
     }
-
   }
 
   post {
