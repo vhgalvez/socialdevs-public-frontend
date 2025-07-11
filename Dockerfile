@@ -5,36 +5,33 @@ FROM node:18-alpine AS build-stage
 
 WORKDIR /app
 
-# Copiar solo los archivos necesarios primero (mejor caché)
+# Copiar archivos de dependencias primero para aprovechar la caché
 COPY package*.json ./
 
-# Usa `npm ci` si hay lockfile, de lo contrario usa `npm install`
-RUN if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; \
-    then npm ci --omit=dev; \
-    else npm install --omit=dev; \
-    fi
+# Instalar todas las dependencias (incluye vite si está como devDependency)
+RUN npm ci
 
-# Copiar el resto de los archivos
+# Copiar el resto del código fuente
 COPY . .
 
-# Asegura variables necesarias para producción
+# Establecer entorno de producción
 ENV NODE_ENV=production
 
-# Compilar la app
+# Construir la aplicación
 RUN npm run build
 
 # Etapa 2: Imagen liviana con Nginx para servir los archivos
 FROM nginx:stable-alpine AS production-stage
 
-# Elimina la config por defecto
+# Eliminar la configuración por defecto de Nginx
 RUN rm /etc/nginx/conf.d/default.conf
 
-# Copiar artefactos compilados
+# Copiar artefactos generados y configuración personalizada
 COPY --from=build-stage /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Puerto HTTP
+# Exponer puerto HTTP estándar
 EXPOSE 80
 
-# Entrypoint de Nginx
+# Comando por defecto
 CMD ["nginx", "-g", "daemon off;"]
