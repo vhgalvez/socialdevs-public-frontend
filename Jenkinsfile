@@ -33,7 +33,7 @@ spec:
 
     - name: docker
       image: docker:25.0.3-cli
-      command: ["sh", "-c", "apk add --no-cache git && cat"]
+      command: ["sh", "-c", "apk add --no-cache git bash node npm && cat"]
       tty: true
       env:
         - name: DOCKER_HOST
@@ -62,12 +62,24 @@ spec:
     GITOPS_REPO = "https://github.com/vhgalvez/socialdevs-gitops.git"
     GITOPS_PATH = "apps/socialdevs-frontend/deployment.yaml"
     DOCKER_REGISTRY_CREDENTIALS_ID = 'dockerhub-credentials'
+    GITHUB_CREDENTIALS_ID = 'github-ci-token'
   }
 
   stages {
     stage('🧾 Checkout código') {
       steps {
         checkout scm
+      }
+    }
+
+    stage('🧪 Ejecutar tests') {
+      steps {
+        sh '''
+          echo "[TEST] Instalando dependencias y ejecutando pruebas unitarias..."
+          npm config set registry https://registry.npmmirror.com
+          npm ci
+          npm run test
+        '''
       }
     }
 
@@ -102,14 +114,24 @@ spec:
 
     stage('🚀 GitOps: actualiza manifiesto') {
       steps {
-        git branch: 'main', url: "${GITOPS_REPO}"
-        sh '''
-          sed -i 's|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|' ${GITOPS_PATH}
-          git config user.email 'ci@socialdevs.dev'
-          git config user.name  'CI Bot'
-          git commit -am "🔄 ${IMAGE_NAME}:${IMAGE_TAG}"
-          git push origin main
-        '''
+        withCredentials([usernamePassword(
+          credentialsId: GITHUB_CREDENTIALS_ID,
+          usernameVariable: 'GIT_USER',
+          passwordVariable: 'GIT_TOKEN'
+        )]) {
+          sh '''
+            git config --global user.email "ci@socialdevs.dev"
+            git config --global user.name "CI Bot"
+
+            git clone https://${GIT_USER}:${GIT_TOKEN}@github.com/vhgalvez/socialdevs-gitops.git gitops-tmp
+            cd gitops-tmp
+
+            sed -i 's|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|' ${GITOPS_PATH}
+            git add ${GITOPS_PATH}
+            git commit -m "🔄 Actualiza a ${IMAGE_NAME}:${IMAGE_TAG}"
+            git push origin main
+          '''
+        }
       }
     }
   }
