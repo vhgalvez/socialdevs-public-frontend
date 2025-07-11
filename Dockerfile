@@ -1,34 +1,45 @@
-# Dockerfile para construir la app Vue y servir con Nginx
+# 🔐 Etapa 1: Construcción con Node.js parcheado
+FROM node:18.20.4-alpine AS build-stage
 
-# Etapa 1: Construcción de la app Vue
-FROM node:18-alpine AS build-stage
-
+# Establecer directorio de trabajo
 WORKDIR /app
 
-# Copiar primero dependencias para aprovechar la caché
+# Copiar archivos de dependencias primero (mejor caché)
 COPY package*.json ./
 
-# Instala dependencias de producción
-RUN npm install --omit=dev
+# Usar npm ci si existe lockfile, si no usar install
+RUN if [ -f package-lock.json ]; then \
+      npm ci --omit=dev; \
+    else \
+      npm install --omit=dev; \
+    fi
 
-# Copiar el resto del código
+# Copiar el resto de los archivos
 COPY . .
 
-# Establecer entorno para producción
+# Variables para producción
 ENV NODE_ENV=production
 
-# Compilar la app Vue
+# Compilar la aplicación Vue
 RUN npm run build
 
-# Etapa 2: Imagen liviana con Nginx
+# 🧼 Limpieza opcional (reduce peso)
+RUN npm cache clean --force && rm -rf /root/.npm /tmp/*
+
+# 🚀 Etapa 2: Imagen ligera de producción
 FROM nginx:stable-alpine AS production-stage
 
-# Eliminar configuración por defecto
-RUN rm /etc/nginx/conf.d/default.conf
+# Eliminar configuración por defecto de Nginx (silenciosamente si no existe)
+RUN rm -f /etc/nginx/conf.d/default.conf
 
-# Copiar artefactos y configuración personalizada
+# Copiar archivos estáticos construidos
 COPY --from=build-stage /app/dist /usr/share/nginx/html
+
+# Copiar tu configuración personalizada de Nginx
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
+# Exponer puerto
 EXPOSE 80
+
+# Ejecutar Nginx
 CMD ["nginx", "-g", "daemon off;"]
