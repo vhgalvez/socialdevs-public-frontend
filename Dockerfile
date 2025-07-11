@@ -10,9 +10,9 @@ COPY package*.json ./
 
 # Usa `npm ci` si hay lockfile, de lo contrario usa `npm install`
 RUN if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; \
-  then npm ci --omit=dev; \
-  else npm install --omit=dev; \
-  fi
+    then npm ci --omit=dev; \
+    else npm install --omit=dev; \
+    fi
 
 # Copiar el resto de los archivos
 COPY . .
