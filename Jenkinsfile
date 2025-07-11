@@ -8,6 +8,8 @@ metadata:
   labels:
     jenkins/role: docker-builder
 spec:
+  imagePullSecrets:
+    - name: dockerhub-pull        # <-- 🔑 usa el Secret para todas las imágenes privadas
   volumes:
     - name: workspace-volume
       emptyDir: {}
@@ -30,7 +32,7 @@ spec:
           mountPath: /home/jenkins/agent
 
     - name: docker
-      image: vhgalvez/docker-git-cli:25.0.3
+      image: vhgalvez/docker-git-cli:25.0.3   # imagen privada
       command: ["cat"]
       tty: true
       env:
@@ -99,10 +101,8 @@ spec:
     stage('🚀 GitOps: actualiza manifiesto') {
       steps {
         git branch: 'main', url: GITOPS_REPO
-
         sh '''
           sed -i 's|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|' ${GITOPS_PATH}
-
           git config user.email 'ci@socialdevs.dev'
           git config user.name  'CI Bot'
           git commit -am "🔄 ${IMAGE_NAME}:${IMAGE_TAG}"
