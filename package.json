@@ -1,6 +1,7 @@
 {
   "name": "socialdevs-public-frontend",
   "version": "1.0.0",
+  "description": "Frontend público para la plataforma SocialDevs",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -13,5 +14,8 @@
   "devDependencies": {
     "vite": "^5.2.0",
     "@vitejs/plugin-vue": "^5.2.4"
-  }
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT"
 }
