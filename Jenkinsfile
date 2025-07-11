@@ -12,6 +12,7 @@ spec:
     - name: workspace-volume
       emptyDir: {}
   containers:
+    # ⛽ DinD daemon
     - name: dind-daemon
       image: docker:25.0.3-dind
       securityContext:
@@ -29,6 +30,7 @@ spec:
         - name: workspace-volume
           mountPath: /home/jenkins/agent
 
+    # 🐳 + 🐙 Docker CLI + Git (alpine -> instalamos git dinámicamente)
     - name: docker
       image: docker:25.0.3-cli
       command: ["cat"]
@@ -40,6 +42,7 @@ spec:
         - name: workspace-volume
           mountPath: /home/jenkins/agent
 
+    # 📡 Agente JNLP
     - name: jnlp
       image: jenkins/inbound-agent:3283.v92c105e0f819-4
       env:
@@ -63,37 +66,32 @@ spec:
   }
 
   stages {
-    stage('🧾 Checkout') {
-      steps {
-        checkout scm
-      }
+    stage('🧾 Checkout código') {
+      steps { checkout scm }
     }
 
-    stage('🐳 Build Docker Image') {
+    stage('🐳 Build Docker') {
       steps {
         sh '''
-          echo "[INFO] Esperando a que Docker daemon esté disponible..."
-          for i in $(seq 1 30); do
-            docker info >/dev/null 2>&1 && break
-            sleep 2
-          done
-          echo "[INFO] Docker daemon listo."
+          echo "[INFO] Esperando Docker daemon…"
+          for i in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 2; done
+          echo "[INFO] Docker listo."
 
           docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-          docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+          docker tag  ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
         '''
       }
     }
 
-    stage('📤 Push Docker') {
+    stage('📤 Push a Docker Hub') {
       steps {
         withCredentials([usernamePassword(
-          credentialsId: "${DOCKER_REGISTRY_CREDENTIALS_ID}",
-          usernameVariable: 'DOCKER_USERNAME',
-          passwordVariable: 'DOCKER_PASSWORD'
+          credentialsId: DOCKER_REGISTRY_CREDENTIALS_ID,
+          usernameVariable: 'DOCKER_USER',
+          passwordVariable: 'DOCKER_PASS'
         )]) {
           sh '''
-            echo "${DOCKER_PASSWORD}" | docker login -u "${DOCKER_USERNAME}" --password-stdin
+            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
             docker push ${IMAGE_NAME}:${IMAGE_TAG}
             docker push ${IMAGE_NAME}:latest
           '''
@@ -101,14 +99,20 @@ spec:
       }
     }
 
-    stage('🚀 GitOps: Update image tag') {
+    stage('🚀 GitOps: actualiza manifiesto') {
       steps {
-        git branch: 'main', url: "${GITOPS_REPO}"
+        // clona repo GitOps en este mismo workspace
+        git branch: 'main', url: GITOPS_REPO
+
         sh """
+          echo '[INFO] Instalando git…'
+          apk add --no-cache git >/dev/null
+
           sed -i 's|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|' ${GITOPS_PATH}
-          git config user.email "ci@socialdevs.dev"
-          git config user.name "CI Bot"
-          git commit -am "🔄 Actualiza imagen ${IMAGE_NAME} a tag ${IMAGE_TAG}"
+
+          git config user.email 'ci@socialdevs.dev'
+          git config user.name  'CI Bot'
+          git commit -am "🔄 ${IMAGE_NAME}:${IMAGE_TAG}"
           git push origin main
         """
       }
@@ -116,11 +120,7 @@ spec:
   }
 
   post {
-    failure {
-      echo "❌ Error en el pipeline"
-    }
-    success {
-      echo "✅ Pipeline finalizado con éxito"
-    }
+    success { echo '✅ Pipeline finalizado con éxito' }
+    failure { echo '❌ Error en el pipeline' }
   }
 }
