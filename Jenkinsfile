@@ -33,7 +33,7 @@ spec:
 
     - name: docker
       image: docker:25.0.3-cli
-      command: ["cat"]
+      command: ["sh", "-c", "apk add --no-cache git && cat"]
       tty: true
       env:
         - name: DOCKER_HOST
@@ -68,12 +68,6 @@ spec:
     stage('🧾 Checkout código') {
       steps {
         checkout scm
-      }
-    }
-
-    stage('📦 Instalar Git') {
-      steps {
-        sh 'apk add --no-cache git'
       }
     }
 
