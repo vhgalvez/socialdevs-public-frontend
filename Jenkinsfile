@@ -75,7 +75,10 @@ spec:
   stages {
     stage('🧾 Checkout código') {
       steps {
-        checkout scm
+        checkout([$class: 'GitSCM',
+          branches: [[name: '*/main']],
+          userRemoteConfigs: [[url: 'https://github.com/vhgalvez/socialdevs-public-frontend.git']]
+        ])
       }
     }
 
