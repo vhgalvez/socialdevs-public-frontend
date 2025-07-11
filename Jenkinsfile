@@ -33,11 +33,18 @@ spec:
 
     - name: docker
       image: docker:25.0.3-cli
-      command: ["sh", "-c", "apk add --no-cache git bash node npm && cat"]
+      command: ["sh", "-c", "apk add --no-cache git bash && cat"]
       tty: true
       env:
         - name: DOCKER_HOST
           value: tcp://localhost:2375
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
+
+    - name: nodejs
+      image: node:18.20.4-alpine
+      tty: true
       volumeMounts:
         - name: workspace-volume
           mountPath: /home/jenkins/agent
@@ -74,12 +81,14 @@ spec:
 
     stage('🧪 Ejecutar tests') {
       steps {
-        sh '''
-          echo "[TEST] Instalando dependencias y ejecutando pruebas unitarias..."
-          npm config set registry https://registry.npmmirror.com
-          npm ci
-          npm run test
-        '''
+        container('nodejs') {
+          sh '''
+            echo "[TEST] Instalando dependencias y ejecutando pruebas unitarias..."
+            npm config set registry https://registry.npmmirror.com
+            npm ci
+            npm run test
+          '''
+        }
       }
     }
 
@@ -119,18 +128,21 @@ spec:
           usernameVariable: 'GIT_USER',
           passwordVariable: 'GIT_TOKEN'
         )]) {
-          sh '''
-            git config --global user.email "ci@socialdevs.dev"
-            git config --global user.name "CI Bot"
+          script {
+            def gitopsTmpDir = "gitops-tmp"
+            sh "git clone https://${GIT_USER}:${GIT_TOKEN}@github.com/vhgalvez/socialdevs-gitops.git ${gitopsTmpDir}"
+            dir(gitopsTmpDir) {
+              sh """
+                git config user.email "ci@socialdevs.dev"
+                git config user.name "CI Bot"
 
-            git clone https://${GIT_USER}:${GIT_TOKEN}@github.com/vhgalvez/socialdevs-gitops.git gitops-tmp
-            cd gitops-tmp
-
-            sed -i 's|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|' ${GITOPS_PATH}
-            git add ${GITOPS_PATH}
-            git commit -m "🔄 Actualiza a ${IMAGE_NAME}:${IMAGE_TAG}"
-            git push origin main
-          '''
+                sed -i 's|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|' ${GITOPS_PATH}
+                git add ${GITOPS_PATH}
+                git commit -m "🔄 Actualiza a ${IMAGE_NAME}:${IMAGE_TAG}"
+                git push origin main
+              """
+            }
+          }
         }
       }
     }
