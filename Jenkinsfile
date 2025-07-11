@@ -73,7 +73,10 @@ spec:
       steps {
         sh '''
           echo "[INFO] Esperando a que Docker daemon esté disponible..."
-          i=0; until docker info >/dev/null 2>&1 || [ $i -gt 30 ]; do sleep 2; i=$((i+1)); done
+          for i in $(seq 1 30); do
+            docker info >/dev/null 2>&1 && break
+            sleep 2
+          done
           echo "[INFO] Docker daemon listo."
 
           docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
