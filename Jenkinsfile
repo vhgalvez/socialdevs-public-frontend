@@ -1,148 +1,166 @@
-controller:
-  image:
-    repository: jenkins/jenkins
-    tag: "2.504.3-jdk17"
-    pullPolicy: IfNotPresent
-
-  admin:
-    existingSecret: jenkins-admin
-    userKey: jenkins-admin-user
-    passwordKey: jenkins-admin-password
-
-  containerEnv:
-    - name: JENKINS_ADMIN_USER
-      valueFrom:
-        secretKeyRef:
-          name: jenkins-admin
-          key: jenkins-admin-user
-    - name: JENKINS_ADMIN_PASSWORD
-      valueFrom:
-        secretKeyRef:
-          name: jenkins-admin
-          key: jenkins-admin-password
-    - name: DOCKERHUB_USERNAME
-      valueFrom:
-        secretKeyRef:
-          name: dockerhub-credentials
-          key: username
-    - name: DOCKERHUB_TOKEN
-      valueFrom:
-        secretKeyRef:
-          name: dockerhub-credentials
-          key: password
-    - name: GITHUB_TOKEN
-      valueFrom:
-        secretKeyRef:
-          name: github-ci-token
-          key: token
-
-  installPlugins:
-    - kubernetes
-    - workflow-aggregator
-    - git
-    - docker-workflow
-    - docker-commons
-    - blueocean
-    - credentials
-    - credentials-binding
-    - configuration-as-code
-    - plain-credentials
-
-  JCasC:
-    enabled: true
-    defaultConfig: false
-    configScripts:
-      main: |
-        jenkins:
-          securityRealm:
-            local:
-              allowsSignup: false
-              users:
-                - id: "${JENKINS_ADMIN_USER}"
-                  password: "${JENKINS_ADMIN_PASSWORD}"
-
-          authorizationStrategy:
-            loggedInUsersCanDoAnything:
-              allowAnonymousRead: false
-
-          clouds:
-            - kubernetes:
-                name: "kubernetes"
-                serverUrl: "https://kubernetes.default"
-                skipTlsVerify: true
-                namespace: "jenkins"
-                jenkinsUrl: "http://jenkins-local-k3d:8080"
-                jenkinsTunnel: "jenkins-local-k3d-agent:50000"
-                containerCap: 10
-                connectTimeout: 5
-                readTimeout: 15
-                templates:
-                  - name: "default"
-                    label: "jenkins-agent"
-                    nodeUsageMode: "NORMAL"
-                    idleMinutes: 1
-                    containers:
-                      - name: jnlp
-                        image: "jenkins/inbound-agent:alpine"
-                        args: "${computer.jnlpmac} ${computer.name}"
-                        ttyEnabled: true
-                        resourceRequestCpu: "100m"
-                        resourceRequestMemory: "128Mi"
-                        resourceLimitCpu: "500m"
-                        resourceLimitMemory: "512Mi"
-
-        credentials:
-          system:
-            domainCredentials:
-              - credentials:
-                  - usernamePassword:
-                      id: "dockerhub-credentials"
-                      username: "${DOCKERHUB_USERNAME}"
-                      password: "${DOCKERHUB_TOKEN}"
-                      description: "DockerHub Access Token for CI/CD"
-                  - secretText:
-                      id: "github-ci-token"
-                      secret: "${GITHUB_TOKEN}"
-                      description: "GitHub Token for Push from Jenkins"
-
-  sidecars:
-    configAutoReload:
-      enabled: true
-
-  securityContext:
-    runAsUser: 1000
-    runAsGroup: 1000
-    fsGroup: 1000
-
-  podAnnotations: {}
-
+pipeline {
+  agent {
+    kubernetes {
+      yaml """
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    jenkins/role: docker-builder
+spec:
+  imagePullSecrets:
+    - name: dockerhub-pull  # Asegúrate de que este Secret existe en el namespace "jenkins"
   volumes:
-    - name: docker-storage
+    - name: workspace-volume
       emptyDir: {}
-    - name: docker-bin
-      emptyDir: {}
-
-  volumeMounts:
-    - name: docker-bin
-      mountPath: /usr/local/bin
-
-agent:
-  podName: "jenkins-agent"
-  customJenkinsLabels:
-    - jenkins-agent
-  nodeUsageMode: NORMAL
   containers:
+    - name: dind-daemon
+      image: docker:25.0.3-dind
+      securityContext:
+        privileged: true
+      env:
+        - name: DOCKER_TLS_CERTDIR
+          value: ""
+      command: ["dockerd"]
+      args:
+        - "--host=tcp://0.0.0.0:2375"
+        - "--host=unix:///var/run/docker.sock"
+      ports:
+        - containerPort: 2375
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
+
+    - name: docker
+      image: docker:25.0.3-cli
+      command: ["sh", "-c", "apk add --no-cache git bash && cat"]
+      tty: true
+      env:
+        - name: DOCKER_HOST
+          value: tcp://localhost:2375
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
+
+    - name: nodejs
+      image: node:18.20.4-alpine
+      tty: true
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
+
     - name: jnlp
-      image: "jenkins/inbound-agent:alpine"
-      ttyEnabled: true
-  connectTimeout: 100
-  runAsUser: 1000
+      image: jenkins/inbound-agent:3283.v92c105e0f819-4
+      env:
+        - name: JENKINS_AGENT_WORKDIR
+          value: /home/jenkins/agent
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
+  restartPolicy: Never
+"""
+      defaultContainer 'docker'
+    }
+  }
 
-persistence:
-  enabled: true
-  storageClass: local-path
-  size: 8Gi
+  environment {
+    IMAGE_NAME  = 'vhgalvez/socialdevs-public-frontend'
+    IMAGE_TAG   = "${BUILD_NUMBER}"
+    GITOPS_REPO = 'https://github.com/vhgalvez/socialdevs-gitops.git'
+    GITOPS_PATH = 'apps/socialdevs-frontend/deployment.yaml'
+    DOCKER_CRED_ID = 'dockerhub-credentials'
+    GITHUB_PAT_ID  = 'github-ci-token'
+  }
 
-service:
-  type: ClusterIP
-  agentListenerPort: 50000
+  stages {
+    stage('🧾 Checkout código') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('🧪 Test') {
+      steps {
+        container('nodejs') {
+          sh '''
+            echo "[TEST] Instalando dependencias y ejecutando pruebas..."
+            npm config set registry https://registry.npmmirror.com
+            npm ci
+            npm run test
+          '''
+        }
+      }
+    }
+
+    stage('🐳 Build & Tag') {
+      steps {
+        container('docker') {
+          sh '''
+            echo "[DOCKER] Esperando daemon..."
+            timeout 60 sh -c 'until docker info >/dev/null 2>&1; do sleep 2; done'
+
+            docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+            docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+          '''
+        }
+      }
+    }
+
+    stage('📤 Push a Docker Hub') {
+      steps {
+        container('docker') {
+          withCredentials([usernamePassword(
+            credentialsId: DOCKER_CRED_ID,
+            usernameVariable: 'DOCKER_USER',
+            passwordVariable: 'DOCKER_PASS'
+          )]) {
+            sh '''
+              echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+              docker push ${IMAGE_NAME}:${IMAGE_TAG}
+              docker push ${IMAGE_NAME}:latest
+            '''
+          }
+        }
+      }
+    }
+
+    stage('🚀 GitOps update') {
+      steps {
+        container('docker') {
+          withCredentials([string(credentialsId: GITHUB_PAT_ID, variable: 'GH_PAT')]) {
+            sh '''
+              set -e
+
+              git clone ${GITOPS_REPO} gitops-tmp
+              cd gitops-tmp
+
+              git config user.name  "CI Bot"
+              git config user.email "ci@socialdevs.dev"
+
+              git remote set-url origin https://x-access-token:${GH_PAT}@github.com/vhgalvez/socialdevs-gitops.git
+
+              sed -i "s|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|" "${GITOPS_PATH}"
+              git add "${GITOPS_PATH}"
+
+              if git diff --cached --quiet; then
+                echo "[INFO] Manifiesto ya actualizado."
+              else
+                git commit -m "🔄 Actualiza a ${IMAGE_NAME}:${IMAGE_TAG}"
+                git push origin main
+              fi
+            '''
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      echo '✅ Pipeline finalizado con éxito'
+    }
+    failure {
+      echo '❌ Error en el pipeline'
+    }
+  }
+}
