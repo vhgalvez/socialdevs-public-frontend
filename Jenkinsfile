@@ -9,7 +9,7 @@ metadata:
     jenkins/role: docker-builder
 spec:
   imagePullSecrets:
-    - name: dockerhub-pull        # <-- 🔑 usa el Secret para todas las imágenes privadas
+    - name: dockerhub-pull
   volumes:
     - name: workspace-volume
       emptyDir: {}
@@ -32,7 +32,7 @@ spec:
           mountPath: /home/jenkins/agent
 
     - name: docker
-      image: vhgalvez/docker-git-cli:25.0.3   # imagen privada
+      image: docker:25.0.3-cli
       command: ["cat"]
       tty: true
       env:
@@ -66,18 +66,26 @@ spec:
 
   stages {
     stage('🧾 Checkout código') {
-      steps { checkout scm }
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('📦 Instalar Git') {
+      steps {
+        sh 'apk add --no-cache git'
+      }
     }
 
     stage('🐳 Build Docker') {
       steps {
         sh '''
           echo "[INFO] Esperando Docker daemon…"
-          timeout 60 bash -c 'until docker info >/dev/null 2>&1; do sleep 2; done'
+          timeout 60 sh -c 'until docker info >/dev/null 2>&1; do sleep 2; done'
           echo "[INFO] Docker listo."
 
           docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-          docker tag  ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+          docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
         '''
       }
     }
@@ -100,7 +108,7 @@ spec:
 
     stage('🚀 GitOps: actualiza manifiesto') {
       steps {
-        git branch: 'main', url: GITOPS_REPO
+        git branch: 'main', url: "${GITOPS_REPO}"
         sh '''
           sed -i 's|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|' ${GITOPS_PATH}
           git config user.email 'ci@socialdevs.dev'
@@ -113,7 +121,11 @@ spec:
   }
 
   post {
-    success { echo '✅ Pipeline finalizado con éxito' }
-    failure { echo '❌ Error en el pipeline' }
+    success {
+      echo '✅ Pipeline finalizado con éxito'
+    }
+    failure {
+      echo '❌ Error en el pipeline'
+    }
   }
 }
