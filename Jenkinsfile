@@ -69,7 +69,7 @@ spec:
     GITOPS_REPO = 'https://github.com/vhgalvez/socialdevs-gitops.git'
     GITOPS_PATH = 'apps/socialdevs-frontend/deployment.yaml'
     DOCKER_CRED_ID = 'dockerhub-credentials'
-    GITHUB_PAT_ID  = 'github-pat'
+    GITHUB_PAT_ID  = 'github-ci-token'
   }
 
   stages {
