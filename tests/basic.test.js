@@ -1,3 +1,4 @@
+// tests/basic.test.js
 import { describe, it, expect } from 'vitest'
 
 describe('🧪 Prueba unitaria básica', () => {
