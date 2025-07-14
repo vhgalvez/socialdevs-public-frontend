@@ -13,6 +13,8 @@ spec:
       hostPath:
         path: /var/run/docker.sock
         type: Socket
+    - name: workspace-volume
+      emptyDir: {}
 
   containers:
     - name: docker
@@ -22,16 +24,25 @@ spec:
       volumeMounts:
         - name: docker-sock
           mountPath: /var/run/docker.sock
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
 
     - name: nodejs
       image: node:18.20.4-alpine
       tty: true
+      command: ["sh", "-c", "cat"]
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
 
     - name: jnlp
       image: jenkins/inbound-agent:3283.v92c105e0f819-4
       env:
         - name: JENKINS_AGENT_WORKDIR
           value: /home/jenkins/agent
+      volumeMounts:
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
   restartPolicy: Never
 """
       defaultContainer 'docker'
