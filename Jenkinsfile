@@ -11,9 +11,11 @@ spec:
   containers:
     - name: kaniko
       image: gcr.io/kaniko-project/executor:latest
+      command:
+        - /kaniko/executor
       args:
         - "--dockerfile=Dockerfile"
-        - "--context=dir://home/jenkins/agent"
+        - "--context=dir:///home/jenkins/agent"
         - "--destination=vhgalvez/socialdevs-public-frontend:\${BUILD_NUMBER}"
         - "--destination=vhgalvez/socialdevs-public-frontend:latest"
       volumeMounts:
@@ -39,7 +41,7 @@ spec:
   volumes:
     - name: kaniko-secret
       secret:
-        secretName: dockerhub-config  # creado con .docker/config.json
+        secretName: dockerhub-config
     - name: workspace
       emptyDir: {}
 
@@ -66,20 +68,24 @@ spec:
 
     stage('Test') {
       steps {
-        container('nodejs') {
-          sh '''
-            npm config set registry https://registry.npmmirror.com
-            npm ci
-            npm run test
-          '''
-        }
+        sh '''
+          npm config set registry https://registry.npmmirror.com
+          npm ci
+          npm run test
+        '''
+      }
+    }
+
+    stage('Debug workspace') {
+      steps {
+        sh 'ls -lah /home/jenkins/agent'
       }
     }
 
     stage('Build & Push con Kaniko') {
       steps {
         container('kaniko') {
-          echo 'Kaniko ejecutará la construcción automática desde Dockerfile'
+          echo '🚀 Ejecutando Kaniko para construir y publicar imagen Docker...'
         }
       }
     }
@@ -98,7 +104,7 @@ spec:
             git add "${GITOPS_PATH}"
 
             if git diff --cached --quiet; then
-              echo "[INFO] Manifiesto ya actualizado."
+              echo "[INFO] No hay cambios en el manifiesto."
             else
               git commit -m "🔄 Actualiza a ${IMAGE_NAME}:${IMAGE_TAG}"
               git push origin main
