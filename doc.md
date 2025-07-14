@@ -324,3 +324,82 @@ Ventaja	Detalle
 🧪 Separación test/producción	k3d permite validar todo antes de desplegar en tu K3s productivo.
 📦 Contenedores versionados	Imágenes con tags únicos por BUILD_NUMBER o commit SHA
 🔄 Idempotencia y trazabilidad	ArgoCD gestiona el estado deseado en Git (declarativo)
+
+
+___________
+✅ Arquitectura CI/CD GitOps completa
+🧱 Infraestructura
+Componente	Tecnología	Función
+Clúster Local	K3d + ArgoCD + Jenkins	Entorno de pruebas
+Clúster Producción	K3s + Flatcar Linux	Entorno estable y seguro
+CI/CD	Jenkins (en K3d)	Pipelines de build, test, push y GitOps update
+Registro de imágenes	DockerHub (vhgalvez/*)	Almacenamiento de imágenes versionadas
+Código fuente	GitHub (socialdevs-public-frontend)	Microservicio frontend
+GitOps repo	GitHub (socialdevs-gitops)	Declarativo: manifiestos K8s actualizados por Jenkins
+CD	ArgoCD (en K3d/K3s)	Sincronización automática al clúster
+
+🔁 Flujo CI/CD paso a paso
+plaintext
+Copiar
+Editar
+              ┌────────────┐
+              │ Desarrollador │
+              └─────┬──────┘
+                    │ Push código (frontend)
+                    ▼
+         ┌──────────────────────────┐
+         │ GitHub: socialdevs-public-frontend │
+         └────────────┬─────────────┘
+                      ▼
+           ┌───────────────────┐
+           │ Jenkins Pipeline  │
+           └───────────────────┘
+     (1) Checkout del repo `frontend`
+     (2) npm install + test unitarios (Vitest)
+     (3) docker build → `vhgalvez/socialdevs-public-frontend:<build>`
+     (4) docker push a DockerHub
+     (5) git clone `socialdevs-gitops`
+     (6) update de `deployment.yaml` con nueva imagen
+     (7) git commit + push
+
+                      ▼
+         ┌────────────────────────┐
+         │ GitHub: socialdevs-gitops │
+         └────────────┬─────────────┘
+                      ▼
+           ┌────────────────────┐
+           │ ArgoCD (K3d / K3s) │
+           └────────────────────┘
+     (8) Detecta cambio en manifiesto
+     (9) Aplica rollout con nueva imagen
+    (10) Clúster se actualiza automáticamente
+🛠️ Detalles técnicos por etapa
+Jenkins
+Corre en K3d.
+
+Usa /var/run/docker.sock o Kaniko.
+
+Tiene credenciales (dockerhub-credentials, github-ci-token).
+
+Jenkinsfile contiene podTemplate con docker, nodejs, jnlp.
+
+DockerHub
+Imagen: vhgalvez/socialdevs-public-frontend
+
+Etiquetas: :latest, :<build_number>
+
+GitOps (socialdevs-gitops)
+Ejemplo de deployment.yaml:
+
+yaml
+Copiar
+Editar
+containers:
+  - name: app
+    image: vhgalvez/socialdevs-public-frontend:123
+ArgoCD
+Apunta al repo socialdevs-gitops
+
+Sincroniza automáticamente (auto-sync + auto-prune opcional)
+
+Puede tener ApplicationSet si despliegas a múltiples entornos
