@@ -6,57 +6,46 @@ apiVersion: v1
 kind: Pod
 metadata:
   labels:
-    jenkins/role: docker-builder
+    jenkins/role: kaniko-builder
 spec:
-  volumes:
-    - name: docker-graph
-      emptyDir: {}
-    - name: workspace-volume
-      emptyDir: {}
-    - name: docker-sock
-      hostPath:
-        path: /var/run/docker.sock
-        type: Socket
-
   containers:
-    - name: docker
-      image: docker:25.0.3-dind
-      securityContext:
-        privileged: true
-      tty: true
-      command:
-        - "sh"
-        - "-c"
-        - |
-          dockerd-entrypoint.sh & sleep 5
-          apk add --no-cache git bash
-          tail -f /dev/null
+    - name: kaniko
+      image: gcr.io/kaniko-project/executor:latest
+      args:
+        - "--dockerfile=Dockerfile"
+        - "--context=dir://home/jenkins/agent"
+        - "--destination=vhgalvez/socialdevs-public-frontend:\${BUILD_NUMBER}"
+        - "--destination=vhgalvez/socialdevs-public-frontend:latest"
       volumeMounts:
-        - name: docker-graph
-          mountPath: /var/lib/docker
-        - name: workspace-volume
+        - name: kaniko-secret
+          mountPath: /kaniko/.docker
+        - name: workspace
           mountPath: /home/jenkins/agent
 
     - name: nodejs
       image: node:18.20.4-alpine
+      command: ["cat"]
       tty: true
-      command: ["sh", "-c", "tail -f /dev/null"]
       volumeMounts:
-        - name: workspace-volume
+        - name: workspace
           mountPath: /home/jenkins/agent
 
     - name: jnlp
-      image: jenkins/inbound-agent:3283.v92c105e0f819-4
-      env:
-        - name: JENKINS_AGENT_WORKDIR
-          value: /home/jenkins/agent
+      image: jenkins/inbound-agent:latest
       volumeMounts:
-        - name: workspace-volume
+        - name: workspace
           mountPath: /home/jenkins/agent
+
+  volumes:
+    - name: kaniko-secret
+      secret:
+        secretName: dockerhub-config  # creado con .docker/config.json
+    - name: workspace
+      emptyDir: {}
 
   restartPolicy: Never
 """
-      defaultContainer 'docker'
+      defaultContainer 'nodejs'
     }
   }
 
@@ -65,22 +54,20 @@ spec:
     IMAGE_TAG      = "${BUILD_NUMBER}"
     GITOPS_REPO    = 'https://github.com/vhgalvez/socialdevs-gitops.git'
     GITOPS_PATH    = 'apps/socialdevs-frontend/deployment.yaml'
-    DOCKER_CRED_ID = 'dockerhub-credentials'
     GITHUB_PAT_ID  = 'github-ci-token'
   }
 
   stages {
-    stage('🧾 Checkout código') {
+    stage('Checkout') {
       steps {
         checkout scm
       }
     }
 
-    stage('🧪 Test') {
+    stage('Test') {
       steps {
         container('nodejs') {
           sh '''
-            echo "[TEST] Instalando dependencias y ejecutando pruebas..."
             npm config set registry https://registry.npmmirror.com
             npm ci
             npm run test
@@ -89,39 +76,20 @@ spec:
       }
     }
 
-    stage('🐳 Build & Tag') {
+    stage('Build & Push con Kaniko') {
       steps {
-        sh '''
-          echo "[DOCKER] Compilando imagen..."
-          docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-          docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
-        '''
-      }
-    }
-
-    stage('📤 Push a Docker Hub') {
-      steps {
-        withCredentials([usernamePassword(
-          credentialsId: DOCKER_CRED_ID,
-          usernameVariable: 'DOCKER_USER',
-          passwordVariable: 'DOCKER_PASS'
-        )]) {
-          sh '''
-            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-            docker push ${IMAGE_NAME}:${IMAGE_TAG}
-            docker push ${IMAGE_NAME}:latest
-          '''
+        container('kaniko') {
+          echo 'Kaniko ejecutará la construcción automática desde Dockerfile'
         }
       }
     }
 
-    stage('🚀 GitOps update') {
+    stage('GitOps update') {
       steps {
         withCredentials([string(credentialsId: GITHUB_PAT_ID, variable: 'GH_PAT')]) {
           sh '''
             git clone ${GITOPS_REPO} gitops-tmp
             cd gitops-tmp
-
             git config user.name  "CI Bot"
             git config user.email "ci@socialdevs.dev"
             git remote set-url origin https://x-access-token:${GH_PAT}@github.com/vhgalvez/socialdevs-gitops.git
