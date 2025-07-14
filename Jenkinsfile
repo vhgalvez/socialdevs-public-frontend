@@ -8,55 +8,30 @@ metadata:
   labels:
     jenkins/role: docker-builder
 spec:
-  imagePullSecrets:
-    - name: dockerhub-pull  # Asegúrate de que este Secret existe en el namespace "jenkins"
   volumes:
-    - name: workspace-volume
-      emptyDir: {}
-  containers:
-    - name: dind-daemon
-      image: docker:25.0.3-dind
-      securityContext:
-        privileged: true
-      env:
-        - name: DOCKER_TLS_CERTDIR
-          value: ""
-      command: ["dockerd"]
-      args:
-        - "--host=tcp://0.0.0.0:2375"
-        - "--host=unix:///var/run/docker.sock"
-      ports:
-        - containerPort: 2375
-      volumeMounts:
-        - name: workspace-volume
-          mountPath: /home/jenkins/agent
+    - name: docker-sock
+      hostPath:
+        path: /var/run/docker.sock
+        type: Socket
 
+  containers:
     - name: docker
       image: docker:25.0.3-cli
-      command: ["sh", "-c", "apk add --no-cache git bash && cat"]
       tty: true
-      env:
-        - name: DOCKER_HOST
-          value: tcp://localhost:2375
+      command: ["sh", "-c", "apk add --no-cache git bash && cat"]
       volumeMounts:
-        - name: workspace-volume
-          mountPath: /home/jenkins/agent
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
 
     - name: nodejs
       image: node:18.20.4-alpine
       tty: true
-      volumeMounts:
-        - name: workspace-volume
-          mountPath: /home/jenkins/agent
 
     - name: jnlp
       image: jenkins/inbound-agent:3283.v92c105e0f819-4
       env:
         - name: JENKINS_AGENT_WORKDIR
           value: /home/jenkins/agent
-      volumeMounts:
-        - name: workspace-volume
-          mountPath: /home/jenkins/agent
   restartPolicy: Never
 """
       defaultContainer 'docker'
@@ -96,9 +71,6 @@ spec:
       steps {
         container('docker') {
           sh '''
-            echo "[DOCKER] Esperando daemon..."
-            timeout 60 sh -c 'until docker info >/dev/null 2>&1; do sleep 2; done'
-
             docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
             docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
           '''
@@ -130,13 +102,11 @@ spec:
           withCredentials([string(credentialsId: GITHUB_PAT_ID, variable: 'GH_PAT')]) {
             sh '''
               set -e
-
               git clone ${GITOPS_REPO} gitops-tmp
               cd gitops-tmp
 
               git config user.name  "CI Bot"
               git config user.email "ci@socialdevs.dev"
-
               git remote set-url origin https://x-access-token:${GH_PAT}@github.com/vhgalvez/socialdevs-gitops.git
 
               sed -i "s|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|" "${GITOPS_PATH}"
