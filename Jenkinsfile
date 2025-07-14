@@ -68,11 +68,13 @@ spec:
 
     stage('Test') {
       steps {
-        sh '''
-          npm config set registry https://registry.npmmirror.com
-          npm ci
-          npm run test
-        '''
+        container('nodejs') {
+          sh '''
+            npm config set registry https://registry.npmmirror.com
+            npm ci
+            npm run test
+          '''
+        }
       }
     }
 
@@ -85,7 +87,13 @@ spec:
     stage('Build & Push con Kaniko') {
       steps {
         container('kaniko') {
-          echo '🚀 Ejecutando Kaniko para construir y publicar imagen Docker...'
+          sh '''
+            /kaniko/executor \
+              --dockerfile=Dockerfile \
+              --context=dir:///home/jenkins/agent \
+              --destination=vhgalvez/socialdevs-public-frontend:${BUILD_NUMBER} \
+              --destination=vhgalvez/socialdevs-public-frontend:latest
+          '''
         }
       }
     }
