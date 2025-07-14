@@ -8,7 +8,6 @@ metadata:
   labels:
     jenkins/role: docker-builder
 spec:
-  serviceAccountName: jenkins  # Importante para acceso RBAC en K8s
   volumes:
     - name: docker-graph
       emptyDir: {}
@@ -29,8 +28,7 @@ spec:
         - "sh"
         - "-c"
         - |
-          dockerd-entrypoint.sh &
-          sleep 5
+          dockerd-entrypoint.sh & sleep 5
           apk add --no-cache git bash
           tail -f /dev/null
       volumeMounts:
