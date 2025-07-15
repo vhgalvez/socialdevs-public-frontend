@@ -9,35 +9,42 @@ metadata:
     jenkins/role: kaniko-builder
 spec:
   containers:
+    # ────────────── Kaniko ──────────────
     - name: kaniko
       image: gcr.io/kaniko-project/executor:latest
+      # Mantén el pod vivo con BusyBox
       command:
-        - cat
-      tty: true
+        - /busybox/sh
+      args:
+        - -c
+        - "sleep 999999"
       volumeMounts:
         - name: kaniko-secret
           mountPath: /kaniko/.docker
         - name: workspace
           mountPath: /workspace
 
+    # ────────────── Node 18 ─────────────
     - name: nodejs
       image: node:18.20.4-alpine
-      command: ["cat"]
+      command: ["sleep", "infinity"]
       tty: true
       volumeMounts:
         - name: workspace
           mountPath: /workspace
 
+    # ────────────── Jenkins JNLP ────────
     - name: jnlp
       image: jenkins/inbound-agent:latest
       volumeMounts:
         - name: workspace
           mountPath: /workspace
 
+  # Volúmenes
   volumes:
     - name: kaniko-secret
       secret:
-        secretName: dockerhub-config
+        secretName: dockerhub-config   # Debe contener config.json con auth base64
     - name: workspace
       emptyDir: {}
 
@@ -47,6 +54,7 @@ spec:
     }
   }
 
+  /* ─────────── Variables de entorno ─────────── */
   environment {
     IMAGE_NAME     = 'vhgalvez/socialdevs-public-frontend'
     IMAGE_TAG      = "${BUILD_NUMBER}"
@@ -55,11 +63,11 @@ spec:
     GITHUB_PAT_ID  = 'github-ci-token'
   }
 
+  /* ───────────────────── Stages ───────────────────── */
   stages {
+
     stage('Checkout') {
-      steps {
-        checkout scm
-      }
+      steps { checkout scm }
     }
 
     stage('Test') {
@@ -73,9 +81,7 @@ spec:
     }
 
     stage('Debug Dockerfile') {
-      steps {
-        sh 'find /workspace -name Dockerfile || true'
-      }
+      steps { sh 'find /workspace -maxdepth 2 -name Dockerfile || true' }
     }
 
     stage('Build & Push con Kaniko') {
@@ -87,7 +93,7 @@ spec:
               --context=dir:///workspace \
               --destination=${IMAGE_NAME}:${IMAGE_TAG} \
               --destination=${IMAGE_NAME}:latest \
-              --verbosity=debug
+              --verbosity=info
           '''
         }
       }
@@ -97,7 +103,7 @@ spec:
       steps {
         withCredentials([string(credentialsId: GITHUB_PAT_ID, variable: 'GH_PAT')]) {
           sh '''
-            git clone ${GITOPS_REPO} gitops-tmp
+            git clone --depth 1 ${GITOPS_REPO} gitops-tmp
             cd gitops-tmp
             git config user.name  "CI Bot"
             git config user.email "ci@socialdevs.dev"
@@ -107,7 +113,7 @@ spec:
             git add "${GITOPS_PATH}"
 
             if git diff --cached --quiet; then
-              echo "[INFO] No hay cambios en el manifiesto."
+              echo "[INFO] Manifiesto ya actualizado."
             else
               git commit -m "🔄 Actualiza a ${IMAGE_NAME}:${IMAGE_TAG}"
               git push origin main
@@ -118,12 +124,9 @@ spec:
     }
   }
 
+  /* ────────── Notificaciones finales ────────── */
   post {
-    success {
-      echo '✅ Pipeline finalizado con éxito'
-    }
-    failure {
-      echo '❌ Error en el pipeline'
-    }
+    success { echo '✅ Pipeline finalizado con éxito' }
+    failure { echo '❌ Error en el pipeline' }
   }
 }
