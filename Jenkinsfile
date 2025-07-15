@@ -9,18 +9,18 @@ metadata:
     jenkins/role: kaniko-builder
 spec:
   containers:
-    # ────────────── Kaniko ──────────────
+    # ───── Kaniko ─────
     - name: kaniko
       image: gcr.io/kaniko-project/executor:latest
-      command: ["/busybox"]
-      args: ["sleep", "infinity"]            # Mantiene vivo el contenedor
+      command: ["sleep"]            # ← ¡CAMBIADO!
+      args: ["infinity"]            # ← ¡CAMBIADO!
       volumeMounts:
         - name: kaniko-secret
           mountPath: /kaniko/.docker
         - name: workspace
           mountPath: /workspace
 
-    # ────────────── Node 18 ─────────────
+    # ───── Node 18 ─────
     - name: nodejs
       image: node:18.20.4-alpine
       command: ["sleep"]
@@ -30,7 +30,7 @@ spec:
         - name: workspace
           mountPath: /workspace
 
-    # ────────────── Jenkins JNLP ────────
+    # ───── Jenkins JNLP ─────
     - name: jnlp
       image: jenkins/inbound-agent:latest
       volumeMounts:
@@ -40,7 +40,7 @@ spec:
   volumes:
     - name: kaniko-secret
       secret:
-        secretName: dockerhub-config        # Debe contener config.json con auth
+        secretName: dockerhub-config      # contiene config.json con auth
     - name: workspace
       emptyDir: {}
 
@@ -50,18 +50,17 @@ spec:
     }
   }
 
-  /* ─────────── Variables de entorno ─────────── */
+  /* ───────── Variables de entorno ───────── */
   environment {
-    IMAGE_NAME     = 'vhgalvez/socialdevs-public-frontend'
-    IMAGE_TAG      = "${BUILD_NUMBER}"
-    GITOPS_REPO    = 'https://github.com/vhgalvez/socialdevs-gitops.git'
-    GITOPS_PATH    = 'apps/socialdevs-frontend/deployment.yaml'
-    GITHUB_PAT_ID  = 'github-ci-token'
+    IMAGE_NAME  = 'vhgalvez/socialdevs-public-frontend'
+    IMAGE_TAG   = "${BUILD_NUMBER}"
+    GITOPS_REPO = 'https://github.com/vhgalvez/socialdevs-gitops.git'
+    GITOPS_PATH = 'apps/socialdevs-frontend/deployment.yaml'
+    GITHUB_PAT_ID = 'github-ci-token'
   }
 
-  /* ───────────────────── Stages ───────────────────── */
+  /* ─────────────────── Stages ────────────────── */
   stages {
-
     stage('Checkout') {
       steps { checkout scm }
     }
@@ -76,11 +75,7 @@ spec:
       }
     }
 
-    stage('Debug Dockerfile') {
-      steps { sh 'find /workspace -maxdepth 2 -name Dockerfile || true' }
-    }
-
-    stage('Build & Push con Kaniko') {
+    stage('Build & push con Kaniko') {
       steps {
         container('kaniko') {
           sh '''
@@ -120,7 +115,6 @@ spec:
     }
   }
 
-  /* ────────── Notificaciones finales ────────── */
   post {
     success { echo '✅ Pipeline finalizado con éxito' }
     failure { echo '❌ Error en el pipeline' }
