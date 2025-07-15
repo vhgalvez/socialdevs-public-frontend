@@ -9,33 +9,31 @@ metadata:
     jenkins/role: kaniko-builder
 spec:
   containers:
-    # ────────── Kaniko (debug) ──────────
     - name: kaniko
       image: gcr.io/kaniko-project/executor:debug
-      command: ["sleep"]
+      command: ["/busybox/sleep"]
       args: ["infinity"]
       volumeMounts:
         - name: kaniko-secret
           mountPath: /kaniko/.docker
         - name: workspace
-          mountPath: /home/jenkins/agent          # 👈 ruta estándar
+          mountPath: /home/jenkins/agent
 
-    # ────────── Node 18 ──────────
     - name: nodejs
       image: node:18.20.4-alpine
-      command: ["sleep"]
-      args: ["infinity"]
+      command: ["/bin/sh", "-c"]
+      args: ["while true; do sleep 30; done"]
       tty: true
       volumeMounts:
         - name: workspace
-          mountPath: /home/jenkins/agent          # 👈
+          mountPath: /home/jenkins/agent
 
-    # ────────── Jenkins JNLP ──────
     - name: jnlp
-      image: jenkins/inbound-agent:latest
+      image: jenkins/inbound-agent:3107.v665000b_51092-10
+      args: ["\${computer.jnlpmac}", "\${computer.name}"]
       volumeMounts:
         - name: workspace
-          mountPath: /home/jenkins/agent          # 👈
+          mountPath: /home/jenkins/agent
 
   volumes:
     - name: kaniko-secret
@@ -50,7 +48,6 @@ spec:
     }
   }
 
-  /* ─── Variables ─── */
   environment {
     IMAGE_NAME  = 'vhgalvez/socialdevs-public-frontend'
     IMAGE_TAG   = "${BUILD_NUMBER}"
@@ -60,7 +57,9 @@ spec:
   }
 
   stages {
-    stage('Checkout')  { steps { checkout scm } }
+    stage('Checkout') {
+      steps { checkout scm }
+    }
 
     stage('Test') {
       steps {
