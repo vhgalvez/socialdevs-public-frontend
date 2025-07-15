@@ -9,18 +9,18 @@ metadata:
     jenkins/role: kaniko-builder
 spec:
   containers:
-    # ───── Kaniko ─────
+    # ─────────── Kaniko (debug) ───────────
     - name: kaniko
-      image: gcr.io/kaniko-project/executor:latest
-      command: ["sleep"]            # ← ¡CAMBIADO!
-      args: ["infinity"]            # ← ¡CAMBIADO!
+      image: gcr.io/kaniko-project/executor:debug      # <─ variante con BusyBox
+      command: ["sleep"]                               # shell+sleep sí existen
+      args: ["infinity"]
       volumeMounts:
         - name: kaniko-secret
-          mountPath: /kaniko/.docker
+          mountPath: /kaniko/.docker                   # credenciales DockerHub
         - name: workspace
           mountPath: /workspace
 
-    # ───── Node 18 ─────
+    # ─────────── Node 18 ───────────
     - name: nodejs
       image: node:18.20.4-alpine
       command: ["sleep"]
@@ -30,7 +30,7 @@ spec:
         - name: workspace
           mountPath: /workspace
 
-    # ───── Jenkins JNLP ─────
+    # ─────────── Jenkins JNLP ───────────
     - name: jnlp
       image: jenkins/inbound-agent:latest
       volumeMounts:
@@ -40,7 +40,7 @@ spec:
   volumes:
     - name: kaniko-secret
       secret:
-        secretName: dockerhub-config      # contiene config.json con auth
+        secretName: dockerhub-config                   # config.json con auth
     - name: workspace
       emptyDir: {}
 
@@ -50,7 +50,7 @@ spec:
     }
   }
 
-  /* ───────── Variables de entorno ───────── */
+  /* ───── Variables de entorno ───── */
   environment {
     IMAGE_NAME  = 'vhgalvez/socialdevs-public-frontend'
     IMAGE_TAG   = "${BUILD_NUMBER}"
@@ -59,8 +59,9 @@ spec:
     GITHUB_PAT_ID = 'github-ci-token'
   }
 
-  /* ─────────────────── Stages ────────────────── */
+  /* ───────────── Stages ───────────── */
   stages {
+
     stage('Checkout') {
       steps { checkout scm }
     }
@@ -115,6 +116,7 @@ spec:
     }
   }
 
+  /* ───── Notificaciones finales ───── */
   post {
     success { echo '✅ Pipeline finalizado con éxito' }
     failure { echo '❌ Error en el pipeline' }
