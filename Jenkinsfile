@@ -1,8 +1,8 @@
 pipeline {
   agent {
     kubernetes {
-      label 'jenkins-agent'
-      defaultContainer 'nodejs'         
+      label 'jenkins-agent'             // Usa el label del podTemplate
+      defaultContainer 'nodejs'         // El contenedor principal (npm)
     }
   }
 
@@ -23,11 +23,13 @@ pipeline {
 
     stage('Test') {
       steps {
-        sh '''
-          npm config set registry https://registry.npmmirror.com
-          npm ci
-          npm run test
-        '''
+        container('nodejs') {
+          sh '''
+            npm config set registry https://registry.npmmirror.com
+            npm ci
+            npm run test
+          '''
+        }
       }
     }
 
