@@ -11,12 +11,14 @@ spec:
   containers:
     - name: kaniko
       image: gcr.io/kaniko-project/executor:latest
+      command:
+        - /kaniko/executor
       args:
         - "--dockerfile=Dockerfile"
         - "--context=dir:///home/jenkins/agent"
         - "--destination=vhgalvez/socialdevs-public-frontend:\${BUILD_NUMBER}"
         - "--destination=vhgalvez/socialdevs-public-frontend:latest"
-        - "--verbosity=info"
+        - "--verbosity=debug"
       volumeMounts:
         - name: kaniko-secret
           mountPath: /kaniko/.docker
@@ -67,28 +69,23 @@ spec:
 
     stage('Test') {
       steps {
-        container('nodejs') {
-          sh '''
-            npm config set registry https://registry.npmmirror.com
-            npm ci
-            npm run test
-          '''
-        }
+        sh '''
+          npm config set registry https://registry.npmmirror.com
+          npm ci
+          npm run test
+        '''
       }
     }
 
-    stage('Debug workspace') {
+    stage('Debug Dockerfile') {
       steps {
-        sh 'ls -lah /home/jenkins/agent'
+        sh 'find /home/jenkins/agent -name Dockerfile || true'
       }
     }
 
     stage('Build & Push con Kaniko') {
       steps {
-        container('kaniko') {
-          echo '🚀 Ejecutando Kaniko para construir y publicar imagen Docker...'
-          // No necesitas sh aquí porque el contenedor `kaniko` ya se ejecuta automáticamente con los `args` definidos
-        }
+        echo '🚀 Kaniko se ejecuta automáticamente al arrancar el contenedor.'
       }
     }
 
