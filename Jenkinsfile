@@ -9,18 +9,18 @@ metadata:
     jenkins/role: kaniko-builder
 spec:
   containers:
-    # ─────────── Kaniko (debug) ───────────
+    # ────────── Kaniko (debug) ──────────
     - name: kaniko
-      image: gcr.io/kaniko-project/executor:debug      # <─ variante con BusyBox
-      command: ["sleep"]                               # shell+sleep sí existen
+      image: gcr.io/kaniko-project/executor:debug
+      command: ["sleep"]
       args: ["infinity"]
       volumeMounts:
         - name: kaniko-secret
-          mountPath: /kaniko/.docker                   # credenciales DockerHub
+          mountPath: /kaniko/.docker
         - name: workspace
-          mountPath: /workspace
+          mountPath: /home/jenkins/agent          # 👈 ruta estándar
 
-    # ─────────── Node 18 ───────────
+    # ────────── Node 18 ──────────
     - name: nodejs
       image: node:18.20.4-alpine
       command: ["sleep"]
@@ -28,19 +28,19 @@ spec:
       tty: true
       volumeMounts:
         - name: workspace
-          mountPath: /workspace
+          mountPath: /home/jenkins/agent          # 👈
 
-    # ─────────── Jenkins JNLP ───────────
+    # ────────── Jenkins JNLP ──────
     - name: jnlp
       image: jenkins/inbound-agent:latest
       volumeMounts:
         - name: workspace
-          mountPath: /workspace
+          mountPath: /home/jenkins/agent          # 👈
 
   volumes:
     - name: kaniko-secret
       secret:
-        secretName: dockerhub-config                   # config.json con auth
+        secretName: dockerhub-config
     - name: workspace
       emptyDir: {}
 
@@ -50,7 +50,7 @@ spec:
     }
   }
 
-  /* ───── Variables de entorno ───── */
+  /* ─── Variables ─── */
   environment {
     IMAGE_NAME  = 'vhgalvez/socialdevs-public-frontend'
     IMAGE_TAG   = "${BUILD_NUMBER}"
@@ -59,12 +59,8 @@ spec:
     GITHUB_PAT_ID = 'github-ci-token'
   }
 
-  /* ───────────── Stages ───────────── */
   stages {
-
-    stage('Checkout') {
-      steps { checkout scm }
-    }
+    stage('Checkout')  { steps { checkout scm } }
 
     stage('Test') {
       steps {
@@ -76,13 +72,13 @@ spec:
       }
     }
 
-    stage('Build & push con Kaniko') {
+    stage('Build & Push con Kaniko') {
       steps {
         container('kaniko') {
           sh '''
             /kaniko/executor \
-              --dockerfile=Dockerfile \
-              --context=dir:///workspace \
+              --dockerfile=/home/jenkins/agent/Dockerfile \
+              --context=dir:///home/jenkins/agent \
               --destination=${IMAGE_NAME}:${IMAGE_TAG} \
               --destination=${IMAGE_NAME}:latest \
               --verbosity=info
@@ -97,7 +93,7 @@ spec:
           sh '''
             git clone --depth 1 ${GITOPS_REPO} gitops-tmp
             cd gitops-tmp
-            git config user.name  "CI Bot"
+            git config user.name "CI Bot"
             git config user.email "ci@socialdevs.dev"
             git remote set-url origin https://x-access-token:${GH_PAT}@github.com/vhgalvez/socialdevs-gitops.git
 
@@ -116,7 +112,6 @@ spec:
     }
   }
 
-  /* ───── Notificaciones finales ───── */
   post {
     success { echo '✅ Pipeline finalizado con éxito' }
     failure { echo '❌ Error en el pipeline' }
