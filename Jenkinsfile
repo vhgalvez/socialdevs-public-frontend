@@ -38,11 +38,12 @@ pipeline {
         container('kaniko') {
           sh '''
             /kaniko/executor \
-              --dockerfile=/home/jenkins/agent/Dockerfile \
-              --context=dir:///home/jenkins/agent \
+              --dockerfile=/workspace/Dockerfile \
+              --context=dir:///workspace \
               --destination=${IMAGE_NAME}:${IMAGE_TAG} \
               --destination=${IMAGE_NAME}:latest \
-              --verbosity=info
+              --verbosity=info \
+              --skip-tls-verify
           '''
         }
       }
