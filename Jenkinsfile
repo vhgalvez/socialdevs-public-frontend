@@ -11,13 +11,12 @@ spec:
   containers:
     - name: kaniko
       image: gcr.io/kaniko-project/executor:latest
-      command:
-        - /kaniko/executor
       args:
         - "--dockerfile=Dockerfile"
         - "--context=dir:///home/jenkins/agent"
         - "--destination=vhgalvez/socialdevs-public-frontend:\${BUILD_NUMBER}"
         - "--destination=vhgalvez/socialdevs-public-frontend:latest"
+        - "--verbosity=info"
       volumeMounts:
         - name: kaniko-secret
           mountPath: /kaniko/.docker
@@ -87,13 +86,8 @@ spec:
     stage('Build & Push con Kaniko') {
       steps {
         container('kaniko') {
-          sh '''
-            /kaniko/executor \
-              --dockerfile=Dockerfile \
-              --context=dir:///home/jenkins/agent \
-              --destination=vhgalvez/socialdevs-public-frontend:${BUILD_NUMBER} \
-              --destination=vhgalvez/socialdevs-public-frontend:latest
-          '''
+          echo '🚀 Ejecutando Kaniko para construir y publicar imagen Docker...'
+          // No necesitas sh aquí porque el contenedor `kaniko` ya se ejecuta automáticamente con los `args` definidos
         }
       }
     }
