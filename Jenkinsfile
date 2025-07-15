@@ -12,18 +12,13 @@ spec:
     - name: kaniko
       image: gcr.io/kaniko-project/executor:latest
       command:
-        - /kaniko/executor
-      args:
-        - "--dockerfile=Dockerfile"
-        - "--context=dir:///home/jenkins/agent"
-        - "--destination=vhgalvez/socialdevs-public-frontend:\${BUILD_NUMBER}"
-        - "--destination=vhgalvez/socialdevs-public-frontend:latest"
-        - "--verbosity=debug"
+        - cat
+      tty: true
       volumeMounts:
         - name: kaniko-secret
           mountPath: /kaniko/.docker
         - name: workspace
-          mountPath: /home/jenkins/agent
+          mountPath: /workspace
 
     - name: nodejs
       image: node:18.20.4-alpine
@@ -31,13 +26,13 @@ spec:
       tty: true
       volumeMounts:
         - name: workspace
-          mountPath: /home/jenkins/agent
+          mountPath: /workspace
 
     - name: jnlp
       image: jenkins/inbound-agent:latest
       volumeMounts:
         - name: workspace
-          mountPath: /home/jenkins/agent
+          mountPath: /workspace
 
   volumes:
     - name: kaniko-secret
@@ -79,13 +74,22 @@ spec:
 
     stage('Debug Dockerfile') {
       steps {
-        sh 'find /home/jenkins/agent -name Dockerfile || true'
+        sh 'find /workspace -name Dockerfile || true'
       }
     }
 
     stage('Build & Push con Kaniko') {
       steps {
-        echo '🚀 Kaniko se ejecuta automáticamente al arrancar el contenedor.'
+        container('kaniko') {
+          sh '''
+            /kaniko/executor \
+              --dockerfile=Dockerfile \
+              --context=dir:///workspace \
+              --destination=${IMAGE_NAME}:${IMAGE_TAG} \
+              --destination=${IMAGE_NAME}:latest \
+              --verbosity=debug
+          '''
+        }
       }
     }
 
