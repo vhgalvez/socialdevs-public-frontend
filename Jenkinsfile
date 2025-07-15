@@ -12,12 +12,8 @@ spec:
     # ────────────── Kaniko ──────────────
     - name: kaniko
       image: gcr.io/kaniko-project/executor:latest
-      # Mantén el pod vivo con BusyBox
-      command:
-        - /busybox/sh
-      args:
-        - -c
-        - "sleep 999999"
+      command: ["/busybox"]
+      args: ["sleep", "infinity"]            # Mantiene vivo el contenedor
       volumeMounts:
         - name: kaniko-secret
           mountPath: /kaniko/.docker
@@ -27,7 +23,8 @@ spec:
     # ────────────── Node 18 ─────────────
     - name: nodejs
       image: node:18.20.4-alpine
-      command: ["sleep", "infinity"]
+      command: ["sleep"]
+      args: ["infinity"]
       tty: true
       volumeMounts:
         - name: workspace
@@ -40,11 +37,10 @@ spec:
         - name: workspace
           mountPath: /workspace
 
-  # Volúmenes
   volumes:
     - name: kaniko-secret
       secret:
-        secretName: dockerhub-config   # Debe contener config.json con auth base64
+        secretName: dockerhub-config        # Debe contener config.json con auth
     - name: workspace
       emptyDir: {}
 
