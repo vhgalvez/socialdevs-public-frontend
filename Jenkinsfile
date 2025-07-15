@@ -1,8 +1,8 @@
 pipeline {
   agent {
     kubernetes {
-      label 'jenkins-agent'             // Usa el label del podTemplate
-      defaultContainer 'nodejs'         // El contenedor principal (npm)
+      inheritFrom 'jenkins-agent'       // ✅ Usa la plantilla predefinida
+      defaultContainer 'nodejs'
     }
   }
 
