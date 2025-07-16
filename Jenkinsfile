@@ -15,7 +15,8 @@ spec:
     - name: jnlp
       image: jenkins/inbound-agent:3107.v665000b_51092-10
       # ELIMINADO: args: - ""
-      # El plugin de Kubernetes inyecta automáticamente los argumentos necesarios
+      # El plugin de Kubernetes inyecta automáticamente los argumentos necesarios.
+      # Eliminar esta línea permite que el agente se conecte correctamente.
       resources:
         requests:
           cpu: "100m"
