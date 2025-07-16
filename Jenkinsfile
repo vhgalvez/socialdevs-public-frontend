@@ -1,8 +1,65 @@
 pipeline {
   agent {
     kubernetes {
-      inheritFrom 'jenkins-agent'       // ✅ Usa la plantilla predefinida
+      label 'jenkins-agent'
       defaultContainer 'nodejs'
+
+      yaml """
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    some-label: jenkins-agent
+spec:
+  containers:
+    - name: jnlp
+      image: jenkins/inbound-agent:3107.v665000b_51092-10
+      args:
+        - ""
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
+
+    - name: nodejs
+      image: node:18-alpine
+      tty: true
+      command:
+        - cat
+      resources:
+        requests:
+          cpu: "200m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "1Gi"
+
+    - name: kaniko
+      image: gcr.io/kaniko-project/executor:latest-debug
+      tty: true
+      command:
+        - /kaniko/executor
+      args:
+        - --help
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "2"
+          memory: "2Gi"
+      volumeMounts:
+        - name: docker-config
+          mountPath: /kaniko/.docker
+
+  volumes:
+    - name: docker-config
+      secret:
+        secretName: dockerhub-credentials
+"""
     }
   }
 
