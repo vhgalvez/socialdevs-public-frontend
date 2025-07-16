@@ -1,64 +1,9 @@
 pipeline {
   agent {
     kubernetes {
-      label 'jenkins-agent'
-      defaultContainer 'nodejs'
-
-      yaml """
-apiVersion: v1
-kind: Pod
-metadata:
-  labels:
-    some-label: jenkins-agent
-spec:
-  containers:
-    - name: jnlp
-      image: jenkins/inbound-agent:3107.v665000b_51092-10
-      # ELIMINADO: args: - ""
-      # El plugin de Kubernetes inyecta automáticamente los argumentos necesarios.
-      # Eliminar esta línea permite que el agente se conecte correctamente.
-      resources:
-        requests:
-          cpu: "100m"
-          memory: "128Mi"
-        limits:
-          cpu: "500m"
-          memory: "512Mi"
-
-    - name: nodejs
-      image: node:18-alpine
-      tty: true
-      command:
-        - cat # Mantiene el contenedor vivo para ejecutar comandos sh
-      resources:
-        requests:
-          cpu: "200m"
-          memory: "512Mi"
-        limits:
-          cpu: "1"
-          memory: "1Gi"
-
-    - name: kaniko
-      image: gcr.io/kaniko-project/executor:latest-debug # Considera usar una versión específica aquí
-      tty: true
-      # ELIMINADO: command y args
-      # Los comandos de Kaniko se ejecutan en la etapa 'sh' del pipeline
-      resources:
-        requests:
-          cpu: "500m"
-          memory: "1Gi"
-        limits:
-          cpu: "2"
-          memory: "2Gi"
-      volumeMounts:
-        - name: docker-config
-          mountPath: /kaniko/.docker
-
-  volumes:
-    - name: docker-config
-      secret:
-        secretName: dockerhub-credentials
-"""
+      inheritFrom 'default'      // Este es el nombre del template en el `jenkins-values.yaml`
+      label 'jenkins-agent'      // Este debe coincidir con el `label` del podTemplate
+      defaultContainer 'nodejs'  // Este contenedor lo defines tú en el template
     }
   }
 
@@ -93,12 +38,12 @@ spec:
       steps {
         container('kaniko') {
           sh '''
-            /kaniko/executor \\
-              --dockerfile=/workspace/Dockerfile \\
-              --context=dir:///workspace \\
-              --destination=${IMAGE_NAME}:${IMAGE_TAG} \\
-              --destination=${IMAGE_NAME}:latest \\
-              --verbosity=info \\
+            /kaniko/executor \
+              --dockerfile=/workspace/Dockerfile \
+              --context=dir:///workspace \
+              --destination=${IMAGE_NAME}:${IMAGE_TAG} \
+              --destination=${IMAGE_NAME}:latest \
+              --verbosity=info \
               --skip-tls-verify
           '''
         }
