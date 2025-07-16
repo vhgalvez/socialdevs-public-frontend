@@ -14,8 +14,8 @@ spec:
   containers:
     - name: jnlp
       image: jenkins/inbound-agent:3107.v665000b_51092-10
-      args:
-        - ""
+      # ELIMINADO: args: - ""
+      # El plugin de Kubernetes inyecta automáticamente los argumentos necesarios
       resources:
         requests:
           cpu: "100m"
@@ -28,7 +28,7 @@ spec:
       image: node:18-alpine
       tty: true
       command:
-        - cat
+        - cat # Mantiene el contenedor vivo para ejecutar comandos sh
       resources:
         requests:
           cpu: "200m"
@@ -38,12 +38,10 @@ spec:
           memory: "1Gi"
 
     - name: kaniko
-      image: gcr.io/kaniko-project/executor:latest-debug
+      image: gcr.io/kaniko-project/executor:latest-debug # Considera usar una versión específica aquí
       tty: true
-      command:
-        - /kaniko/executor
-      args:
-        - --help
+      # ELIMINADO: command y args
+      # Los comandos de Kaniko se ejecutan en la etapa 'sh' del pipeline
       resources:
         requests:
           cpu: "500m"
@@ -94,12 +92,12 @@ spec:
       steps {
         container('kaniko') {
           sh '''
-            /kaniko/executor \
-              --dockerfile=/workspace/Dockerfile \
-              --context=dir:///workspace \
-              --destination=${IMAGE_NAME}:${IMAGE_TAG} \
-              --destination=${IMAGE_NAME}:latest \
-              --verbosity=info \
+            /kaniko/executor \\
+              --dockerfile=/workspace/Dockerfile \\
+              --context=dir:///workspace \\
+              --destination=${IMAGE_NAME}:${IMAGE_TAG} \\
+              --destination=${IMAGE_NAME}:latest \\
+              --verbosity=info \\
               --skip-tls-verify
           '''
         }
