@@ -1,9 +1,8 @@
 pipeline {
   agent {
     kubernetes {
-      inheritFrom 'default'      // Este es el nombre del template en el `jenkins-values.yaml`
-      label 'jenkins-agent'      // Este debe coincidir con el `label` del podTemplate
-      defaultContainer 'nodejs'  // Este contenedor lo defines tú en el template
+      inheritFrom 'default'       // 👈 este debe coincidir con el name: "default" en jenkins-values.yaml
+      defaultContainer 'nodejs'
     }
   }
 
