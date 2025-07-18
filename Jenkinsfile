@@ -2,7 +2,7 @@
 pipeline {
   agent {
     kubernetes {
-      inheritFrom 'default'       // ← ahora sí coincide 100 %
+      inheritFrom 'default'
       defaultContainer 'nodejs'
     }
   }
@@ -38,12 +38,12 @@ pipeline {
       steps {
         container('kaniko') {
           sh '''
-            /kaniko/executor \\
-              --dockerfile=/workspace/Dockerfile \\
-              --context=dir:///workspace \\
-              --destination=${IMAGE_NAME}:${IMAGE_TAG} \\
-              --destination=${IMAGE_NAME}:latest \\
-              --verbosity=info \\
+            /kaniko/executor \
+              --dockerfile=/workspace/Dockerfile \
+              --context=dir:///workspace \
+              --destination=${IMAGE_NAME}:${IMAGE_TAG} \
+              --destination=${IMAGE_NAME}:latest \
+              --verbosity=info \
               --skip-tls-verify
           '''
         }
@@ -52,27 +52,24 @@ pipeline {
 
     stage('GitOps update') {
       steps {
-        // Ejecutamos esto en el contenedor principal 'jnlp' (el agente de Jenkins)
-        container('jnlp') {
-          withCredentials([string(credentialsId: GITHUB_PAT_ID, variable: 'GH_PAT')]) {
-            sh '''
-              git clone --depth 1 ${GITOPS_REPO} gitops-tmp
-              cd gitops-tmp
-              git config user.name "CI Bot"
-              git config user.email "ci@socialdevs.dev"
-              git remote set-url origin https://x-access-token:${GH_PAT}@github.com/vhgalvez/socialdevs-gitops.git
+        withCredentials([string(credentialsId: GITHUB_PAT_ID, variable: 'GH_PAT')]) {
+          sh '''
+            git clone --depth 1 ${GITOPS_REPO} gitops-tmp
+            cd gitops-tmp
+            git config user.name "CI Bot"
+            git config user.email "ci@socialdevs.dev"
+            git remote set-url origin https://x-access-token:${GH_PAT}@github.com/vhgalvez/socialdevs-gitops.git
 
-              sed -i "s|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|" "${GITOPS_PATH}"
-              git add "${GITOPS_PATH}"
+            sed -i "s|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|" "${GITOPS_PATH}"
+            git add "${GITOPS_PATH}"
 
-              if git diff --cached --quiet; then
-                echo "[INFO] Manifiesto ya actualizado."
-              else
-                git commit -m "🔄 Actualiza a ${IMAGE_NAME}:${IMAGE_TAG}"
-                git push origin main
-              fi
-            '''
-          }
+            if git diff --cached --quiet; then
+              echo "[INFO] Manifiesto ya actualizado."
+            else
+              git commit -m "🔄 Actualiza a ${IMAGE_NAME}:${IMAGE_TAG}"
+              git push origin main
+            fi
+          '''
         }
       }
     }
