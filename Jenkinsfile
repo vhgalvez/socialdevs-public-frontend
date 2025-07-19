@@ -2,49 +2,42 @@
 pipeline {
   agent {
     kubernetes {
-      inheritFrom 'default'
+      label 'default'          // ← coincide con la plantilla creada en JCasC
       defaultContainer 'nodejs'
     }
   }
 
   environment {
-    IMAGE_NAME    = 'vhgalvez/socialdevs-public-frontend'
-    IMAGE_TAG     = "${BUILD_NUMBER}"
-    GITOPS_REPO   = 'https://github.com/vhgalvez/socialdevs-gitops.git'
-    GITOPS_PATH   = 'apps/socialdevs-frontend/deployment.yaml'
+    IMAGE_NAME  = 'vhgalvez/socialdevs-public-frontend'
+    IMAGE_TAG   = "${BUILD_NUMBER}"
+    GITOPS_REPO = 'https://github.com/vhgalvez/socialdevs-gitops.git'
+    GITOPS_PATH = 'apps/socialdevs-frontend/deployment.yaml'
     GITHUB_PAT_ID = 'github-ci-token'
   }
 
   stages {
     stage('Checkout') {
-      steps {
-        checkout scm
-      }
+      steps { checkout scm }
     }
 
     stage('Test') {
       steps {
         container('nodejs') {
-          sh '''
-            npm config set registry https://registry.npmmirror.com
-            npm ci
-            npm run test
-          '''
+          sh 'npm ci --registry=https://registry.npmmirror.com && npm test'
         }
       }
     }
 
-    stage('Build & Push con Kaniko') {
+    stage('Build & Push (Kaniko)') {
       steps {
         container('kaniko') {
           sh '''
             /kaniko/executor \
-              --dockerfile=/workspace/Dockerfile \
+              --dockerfile=Dockerfile \
               --context=dir:///workspace \
               --destination=${IMAGE_NAME}:${IMAGE_TAG} \
               --destination=${IMAGE_NAME}:latest \
-              --verbosity=info \
-              --skip-tls-verify
+              --verbosity=info --skip-tls-verify
           '''
         }
       }
@@ -56,19 +49,12 @@ pipeline {
           sh '''
             git clone --depth 1 ${GITOPS_REPO} gitops-tmp
             cd gitops-tmp
-            git config user.name "CI Bot"
             git config user.email "ci@socialdevs.dev"
-            git remote set-url origin https://x-access-token:${GH_PAT}@github.com/vhgalvez/socialdevs-gitops.git
-
-            sed -i "s|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|" "${GITOPS_PATH}"
-            git add "${GITOPS_PATH}"
-
-            if git diff --cached --quiet; then
-              echo "[INFO] Manifiesto ya actualizado."
-            else
-              git commit -m "🔄 Actualiza a ${IMAGE_NAME}:${IMAGE_TAG}"
-              git push origin main
-            fi
+            git config user.name  "CI Bot"
+            sed -i "s|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|" ${GITOPS_PATH}
+            git add ${GITOPS_PATH}
+            git commit -m "🔄 Actualiza a ${IMAGE_NAME}:${IMAGE_TAG}" || echo "No hay cambios"
+            git push https://x-access-token:${GH_PAT}@github.com/vhgalvez/socialdevs-gitops.git HEAD:main
           '''
         }
       }
@@ -76,11 +62,7 @@ pipeline {
   }
 
   post {
-    success {
-      echo '✅ Pipeline finalizado con éxito'
-    }
-    failure {
-      echo '❌ Error en el pipeline'
-    }
+    success { echo '✅ Pipeline OK' }
+    failure { echo '❌ Pipeline FALLÓ' }
   }
 }
