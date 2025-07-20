@@ -2,28 +2,33 @@
 pipeline {
   agent {
     kubernetes {
-      label 'default'          // ← coincide con la plantilla creada en JCasC
-      defaultContainer 'nodejs'
+      label 'default'              // ← Debe coincidir con tu plantilla JCasC
+      defaultContainer 'nodejs'    // ← Para las etapas con Node
     }
   }
 
   environment {
-    IMAGE_NAME  = 'vhgalvez/socialdevs-public-frontend'
-    IMAGE_TAG   = "${BUILD_NUMBER}"
-    GITOPS_REPO = 'https://github.com/vhgalvez/socialdevs-gitops.git'
-    GITOPS_PATH = 'apps/socialdevs-frontend/deployment.yaml'
-    GITHUB_PAT_ID = 'github-ci-token'
+    IMAGE_NAME     = 'vhgalvez/socialdevs-public-frontend'
+    IMAGE_TAG      = "${BUILD_NUMBER}"
+    GITOPS_REPO    = 'https://github.com/vhgalvez/socialdevs-gitops.git'
+    GITOPS_PATH    = 'apps/socialdevs-frontend/deployment.yaml'
+    GITHUB_PAT_ID  = 'github-ci-token'   // ← ID de la credencial tipo "string"
   }
 
   stages {
     stage('Checkout') {
-      steps { checkout scm }
+      steps {
+        checkout scm
+      }
     }
 
     stage('Test') {
       steps {
         container('nodejs') {
-          sh 'npm ci --registry=https://registry.npmmirror.com && npm test'
+          sh '''
+            npm ci --registry=https://registry.npmmirror.com
+            npm test
+          '''
         }
       }
     }
@@ -34,7 +39,7 @@ pipeline {
           sh '''
             /kaniko/executor \
               --dockerfile=Dockerfile \
-              --context=dir:///workspace \
+              --context=dir://${WORKSPACE} \
               --destination=${IMAGE_NAME}:${IMAGE_TAG} \
               --destination=${IMAGE_NAME}:latest \
               --verbosity=info --skip-tls-verify
@@ -62,7 +67,11 @@ pipeline {
   }
 
   post {
-    success { echo '✅ Pipeline OK' }
-    failure { echo '❌ Pipeline FALLÓ' }
+    success {
+      echo '✅ Pipeline OK'
+    }
+    failure {
+      echo '❌ Pipeline FALLÓ'
+    }
   }
 }
