@@ -1,41 +1,41 @@
-// Jenkinsfile – versión 100 % operativa
-//
-// ▸ Requisitos en el lado de Jenkins
-//   • PodTemplate “default” con contenedores:
-//       – nodejs  : node:18‑alpine
-//       – kaniko  : gcr.io/kaniko-project/executor:v1.23.0-debug
-//   • Secret  dockerhub-config  montado en /kaniko/.docker
-//   • Credencial **Username + Password** con ID `github-ci-token`
-//       – Username → cualquier texto (p. ej. `github-ci`)
-//       – Password → tu PAT de GitHub con scope `repo`
-// ---------------------------------------------------------------------------
+// Jenkinsfile
+// ────────────────────────────────────────────────────────────────────────
+// Jenkinsfile  – GitOps frontend (token PAT guardado como Secret‑text)
+// ------------------------------------------------------------------------
+// • PodTemplate “default” con contenedores:
+//     · nodejs  : node:18‑alpine
+//     · kaniko  : gcr.io/kaniko-project/executor:v1.23.0-debug
+// • Secret dockerhub-config → /kaniko/.docker
+// • Credencial *Secret text*  (ID github-ci-token) con tu PAT
+//   ↳ Ubícala en *System / Global* (no en la store de usuario)
+// ------------------------------------------------------------------------
 
 pipeline {
-  /* ────────────────── 1. Agente Kubernetes ──────────────────── */
+  /* ───────── 1. Agente Kubernetes ───────── */
   agent {
     kubernetes {
-      label            'default'      // ← debe coincidir con tu JCasC
-      defaultContainer 'nodejs'       // ← contenedor por defecto
+      label            'default'
+      defaultContainer 'nodejs'
     }
   }
 
-  /* ────────────────── 2. Variables globales ─────────────────── */
+  /* ───────── 2. Variables globales ──────── */
   environment {
     IMAGE_NAME  = 'vhgalvez/socialdevs-public-frontend'
     IMAGE_TAG   = "${BUILD_NUMBER}"
     GITOPS_REPO = 'https://github.com/vhgalvez/socialdevs-gitops.git'
     GITOPS_PATH = 'apps/socialdevs-frontend/deployment.yaml'
-    GITHUB_CREDS = 'github-ci-token'   // ← ID de la credencial (user/pass)
+    GITHUB_PAT_ID = 'github-ci-token'     // ← Secret‑text con el PAT
   }
 
-  /* ────────────────── 3. Stages del pipeline ────────────────── */
+  /* ───────── 3. Pipeline stages ─────────── */
   stages {
 
     stage('Checkout') {
       steps { checkout scm }
     }
 
-    stage('Test') {
+    stage('Unit tests') {
       steps {
         container('nodejs') {
           sh '''
@@ -46,7 +46,7 @@ pipeline {
       }
     }
 
-    stage('Build & Push (Kaniko)') {
+    stage('Build & push image (Kaniko)') {
       steps {
         container('kaniko') {
           sh '''
@@ -61,35 +61,30 @@ pipeline {
       }
     }
 
-    stage('GitOps update') {
+    stage('GitOps commit & push') {
       steps {
         container('nodejs') {
-          /* Instalamos git (≃5 MB) y configuramos helper de credenciales
-             que inyecta el PAT sin exponerlo en la URL */
-          withCredentials([
-            usernamePassword(credentialsId: GITHUB_CREDS,
-                             usernameVariable: 'GH_USER',
-                             passwordVariable: 'GH_PAT')
-          ]) {
+          withCredentials([string(credentialsId: GITHUB_PAT_ID, variable: 'GH_PAT')]) {
+
             sh '''
-              # Instala git en Alpine si no existe
+              # instala git en Alpine si no existe
               command -v git >/dev/null 2>&1 || apk add --no-cache git
 
-              # Helper para autenticar cualquier push/clone via HTTPS
+              # helper que suministra usuario + token para cualquier URL HTTPS
               git config --global credential.helper '!f() { \
-                echo "username=${GH_USER}"; \
-                echo "password=${GH_PAT}"; \
+                  echo "username=x-access-token"; \
+                  echo "password=${GH_PAT}"; \
               }; f'
 
+              # clona, modifica manifiesto y hace push
               git clone --depth 1 ${GITOPS_REPO} gitops-tmp
               cd gitops-tmp
               git config user.email "ci@socialdevs.dev"
               git config user.name  "CI Bot"
 
-              sed -i "s|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|g" ${GITOPS_PATH}
+              sed -i "s|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|" ${GITOPS_PATH}
               git add ${GITOPS_PATH}
-              git commit -m "🔄 Actualiza a ${IMAGE_NAME}:${IMAGE_TAG}" || echo "Sin cambios"
-
+              git commit -m "🔄 Actualiza a ${IMAGE_NAME}:${IMAGE_TAG}" || echo "Sin cambios"
               git push origin HEAD:main
             '''
           }
@@ -98,9 +93,9 @@ pipeline {
     }
   }
 
-  /* ────────────────── 4. Post‑build ─────────────────────────── */
+  /* ───────── 4. Post‑build ─────────────── */
   post {
-    success { echo '✅ Pipeline OK'  }
-    failure { echo '❌ Pipeline FALLÓ' }
+    success { echo '✅ Pipeline OK'   }
+    failure { echo '❌ Pipeline FALLÓ' }
   }
 }
