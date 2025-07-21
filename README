@@ -753,6 +753,7 @@ http://localhost:8090
 
 
 
+git clone https://x-access-token:ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx@github.com/vhgalvez/socialdevs-gitops.git
 
 
 */main
