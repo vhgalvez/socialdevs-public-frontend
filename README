@@ -751,6 +751,9 @@ kubectl port-forward svc/jenkins -n jenkins 8090:8080
 http://localhost:8090
 
 
+kubectl port-forward svc/socialdevs-frontend 8090:80 -n default
+
+http://localhost:8090/socialdevs-frontend
 
 
 */main
