@@ -1,7 +1,7 @@
 
 <template>
   <div>
-    <h1>SocialDevs MicroTwitter</h1>
+    <h1>SocialDevs MicroSocialDevs</h1>
     <router-view />
   </div>
 </template>
